@@ -66,6 +66,7 @@ def test_exhausted_worker_attempts_are_terminal():
             assert claimed['attempts'] == attempt + 1
             with connect() as conn:
                 conn.execute("UPDATE jobs SET lease_until=now()-interval '1 second' WHERE id=%s", (claimed['id'],))
+            queue.release_reservation(claimed)  # Simulated runner cleanup completed.
         assert queue.claim() is None
         finished = client.get(base + '/jobs/' + job_id, headers=headers).json()
         assert finished['status'] == 'failed'

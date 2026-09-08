@@ -1,5 +1,9 @@
 # Reviewing proposals and checking generalization
 
+Historical operator CLI. For new concurrent/resumable comparisons, use
+[the durable experiment API](EXPERIMENT_PLATFORM.md). This older tool bypasses
+the shared capacity pool; do not run it alongside managed worker experiments.
+
 `service.experiments` is an operator evaluation tool for saved service jobs. It
 reads the best persisted source and development failures, creates a proposal, and
 evaluates frozen versions using the same Harbor runner and sandbox budgets. It

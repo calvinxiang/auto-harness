@@ -4,6 +4,7 @@ The service packages POLICY_SOURCE as data; only this sandbox entry point execut
 it. Model transport, call accounting and process watchdogs belong to the runtime.
 """
 import json
+import importlib.util
 import os
 from pathlib import Path
 import signal
@@ -15,7 +16,11 @@ import urllib.error
 import urllib.request
 
 POLICY_SOURCE = '__AGENT_CODE__'
-MAX_STEPS = 80
+BUNDLE_FILES = {}
+BUNDLE_ENTRYPOINT = 'agent.py'
+BUNDLE_SKILLS = []
+BUNDLE_ROOT = None
+MAX_STEPS = int(os.environ.get('AGENT_MAX_STEPS', '80'))
 MAX_OUTPUT_CHARS = 8000
 
 
@@ -161,7 +166,52 @@ class ModelResponseError(Exception):
     pass
 
 
-class AgentAPI:
+class PackageAssets:
+    def asset_event(self, action, name=None):
+        if hasattr(self, 'meta'):
+            events = self.meta.setdefault('asset_events', [])
+            if len(events) < 200:
+                events.append({'action': action, 'path': name})
+                self.save()
+
+    def skills(self):
+        self.asset_event('discover_skills')
+        return json.loads(json.dumps(BUNDLE_SKILLS))
+
+    def asset_path(self, name):
+        if BUNDLE_ROOT is None or name not in BUNDLE_FILES:
+            raise ValueError('Unknown package asset')
+        path = (BUNDLE_ROOT / name).resolve()
+        if not path.is_relative_to(BUNDLE_ROOT.resolve()):
+            raise ValueError('Asset escapes package root')
+        self.asset_event('asset_path', name)
+        return str(path)
+
+    def read_asset(self, name):
+        self.asset_event('read_asset', name)
+        return Path(self.asset_path(name)).read_text()
+
+
+def load_policy():
+    global BUNDLE_ROOT
+    if BUNDLE_FILES:
+        BUNDLE_ROOT = Path(tempfile.mkdtemp(prefix='harness-package-'))
+        for name, source in BUNDLE_FILES.items():
+            path = BUNDLE_ROOT / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(source)
+        sys.path.insert(0, str(BUNDLE_ROOT))
+        spec = importlib.util.spec_from_file_location('agent_policy', BUNDLE_ROOT / BUNDLE_ENTRYPOINT)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        return module.__dict__
+    module = {'__name__': 'agent_policy'}
+    exec(compile(POLICY_SOURCE, '<agent_policy>', 'exec'), module)
+    return module
+
+
+class AgentAPI(PackageAssets):
     def __init__(self):
         self.trace = []
         self.requests = []
@@ -172,7 +222,7 @@ class AgentAPI:
                      'agent_api': os.environ.get('AGENT_API', 'chat_completions'),
                      'reasoning_effort': os.environ.get('AGENT_REASONING_EFFORT', ''),
                      'max_output_tokens': int(os.environ.get('AGENT_MAX_OUTPUT_TOKENS', '4096')),
-                     'stop_reason': 'agent_declared_complete'}
+                     'stop_reason': 'running'}
 
     def save(self):
         Path('/logs/agent/trace.json').write_text(json.dumps(self.trace))
@@ -189,6 +239,7 @@ class AgentAPI:
         self.requests.append({'call': self.meta['model_calls'],
                               'messages': json.loads(json.dumps(messages)),
                               'tools': json.loads(json.dumps(tools))})
+        self.meta.setdefault('request_sizes', []).append(len(json.dumps(messages)))
         if not self.trace:
             self.trace.extend(json.loads(json.dumps(messages[:2])))
         self.save()
@@ -254,7 +305,7 @@ def check_messages(messages):
         raise ValueError('Missing tool result')
 
 
-class FixtureAPI:
+class FixtureAPI(PackageAssets):
     """Offline contract check. No credentials, model request or command execution."""
     def __init__(self):
         self.calls = 0
@@ -291,9 +342,8 @@ def main():
     def budget_exceeded(*_):
         raise TimeoutError('Agent time budget exceeded')
     signal.signal(signal.SIGTERM, budget_exceeded)
-    module = {'__name__': 'agent_policy'}
     if '--self-test' in sys.argv:
-        exec(compile(POLICY_SOURCE, '<agent_policy>', 'exec'), module)
+        module = load_policy()
         fixture = FixtureAPI()
         module['run_agent'](fixture, 'Run a harmless inspection command and then finish.')
         if fixture.calls < 2 or fixture.bash_calls < 1 or not fixture.outputs:
@@ -302,8 +352,9 @@ def main():
         return
     api = AgentAPI()
     try:
-        exec(compile(POLICY_SOURCE, '<agent_policy>', 'exec'), module)
+        module = load_policy()
         module['run_agent'](api, Path('/opt/harness/instruction.txt').read_text())
+        api.meta['stop_reason'] = 'agent_declared_complete'
     except CallBudgetExceeded:
         api.meta['stop_reason'] = 'max_steps'
     except Exception as exc:

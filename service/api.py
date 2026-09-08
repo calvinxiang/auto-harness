@@ -158,7 +158,7 @@ def submit(org_id: UUID, body: JobCreate, user: User,
                 return existing
         # Bound queued/in-flight jobs per organization; serialize admissions.
         conn.execute('SELECT id FROM organizations WHERE id=%s FOR UPDATE', (org_id,))
-        count = conn.execute("SELECT count(*) AS n FROM jobs WHERE org_id=%s AND status IN ('queued','running')", (org_id,)).fetchone()['n']
+        count = conn.execute("SELECT count(*) AS n FROM jobs WHERE org_id=%s AND status IN ('queued','running') AND request->>'kind' IS DISTINCT FROM 'trial'", (org_id,)).fetchone()['n']
         if count >= 10:
             raise HTTPException(429, 'Organization has 10 active jobs; retry after one finishes')
         request['execution'] = execution_config()
@@ -193,3 +193,7 @@ def cancel(org_id: UUID, job_id: UUID, user: User):
             return row
         conn.execute("UPDATE iterations SET status='interrupted',finished_at=now() WHERE job_id=%s AND status='running'", (job_id,))
         return conn.execute("UPDATE jobs SET status='cancelled',stop_reason='cancelled_by_user',finished_at=now(),updated_at=now(),lease_until=NULL WHERE id=%s RETURNING *", (job_id,)).fetchone()
+
+
+from .campaign_api import register as register_campaigns
+register_campaigns(app, User, membership, visible_job)

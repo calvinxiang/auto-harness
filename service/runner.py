@@ -69,6 +69,7 @@ def parse_results(job_dir, task_ids):
                 'failure_summary': summary, 'trace': read_text(path.parent / 'agent/trace.json'),
                 'trace_signals': trace_signals(read_text(path.parent / 'agent/trace.json', 2000000)),
                 'agent_metadata': read_text(path.parent / 'agent/meta.json', 4000),
+                'supervisor_metadata': read_text(path.parent / 'agent/execution.json', 1000),
                 'verifier_output': verifier_output}
         except (ValueError, KeyError, TypeError):
             continue
@@ -81,10 +82,15 @@ def parse_results(job_dir, task_ids):
             'score': sum(t['reward'] or 0 for t in tasks) / len(tasks)}
 
 
-def docker_json(args):
+def docker_json(args, missing_ok=False):
     result = subprocess.run(['docker', *args], capture_output=True, text=True, timeout=30)
     if result.returncode:
-        raise RuntimeError('Sandbox Docker engine is unavailable')
+        # Concurrent workers may remove a --rm container between list and inspect.
+        # Only explicit absence is benign; transport/auth/daemon failures stay fatal.
+        errors = [line.strip() for line in result.stderr.splitlines() if line.strip()]
+        absent = errors and all(re.match(r'(Error: No such object:|Error response from daemon: (No such container:|network .+ not found))', line) for line in errors)
+        if not (missing_ok and absent):
+            raise RuntimeError('Sandbox Docker engine is unavailable')
     return result.stdout
 
 
@@ -93,23 +99,25 @@ def cleanup(prefix):
     ids = docker_json(['ps', '-aq']).split()
     if not ids:
         return
-    containers = json.loads(docker_json(['inspect', *ids]))
+    containers = json.loads(docker_json(['inspect', *ids], missing_ok=True))
     projects = set()
     for container in containers:
         if any(m.get('Source', '').startswith(str(prefix).rstrip('/') + '/') for m in container.get('Mounts', [])):
             project = container['Config'].get('Labels', {}).get('com.docker.compose.project')
             if project:
                 projects.add(project)
-            docker_json(['rm', '-f', container['Id']])
+            docker_json(['rm', '-f', container['Id']], missing_ok=True)
     for project in projects:
         networks = docker_json(['network', 'ls', '-q', '--filter', f'label=com.docker.compose.project={project}']).split()
         if networks:
-            docker_json(['network', 'rm', *networks])
+            docker_json(['network', 'rm', *networks], missing_ok=True)
 
 
 class HarborRunner:
     def preflight(self, job, iteration, stop_event):
         """Import and exercise generated Python only in the dedicated sandbox engine."""
+        if stop_event.is_set():
+            raise LeaseLost('Preflight cancelled before launch')
         root = Path(settings().artifacts_dir) / 'runs' / str(job['id']) / str(job['claim_token']) / ('preflight-' + str(iteration['number']))
         root.mkdir(parents=True, exist_ok=True)
         (root / 'agent.py').write_text(iteration['agent_source'])
@@ -149,7 +157,11 @@ class HarborRunner:
                                stderr=subprocess.DEVNULL, timeout=30)
 
     def run(self, job, iteration, stop_event):
+        if stop_event.is_set():
+            raise LeaseLost('Benchmark cancelled before launch')
         cfg = settings()
+        execution = job['request'].get('execution', {})
+        model = execution.get('agent_model', cfg.agent_model)
         if cfg.sandbox_provider != 'docker':
             raise RuntimeError('This service currently supports Docker; E2B credential is reserved for a future backend')
         root = Path(cfg.artifacts_dir) / 'runs' / str(job['id']) / str(job['claim_token']) / str(iteration['number'])
@@ -158,16 +170,19 @@ class HarborRunner:
         source_path.write_text(iteration['agent_source'])
         cmd = ['/opt/harbor/bin/harbor', 'run', '-d', 'terminal-bench@2.0',
                '--agent-import-path', 'service.harbor_agent:SandboxHarnessAgent',
-               '--model', cfg.agent_model, '--env', 'docker', '--jobs-dir', str(root),
-               '--job-name', 'benchmark', '-n', '2', '--max-retries', '0',
+               '--model', model, '--env', 'docker', '--jobs-dir', str(root),
+               '--job-name', 'benchmark', '-n', str(min(2, len(job['request']['task_ids']))), '--max-retries', '0',
                '--override-cpus', '1', '--override-memory-mb', '2048', '--delete', '--quiet']
         for task in job['request']['task_ids']:
             cmd.extend(['--task-name', task])
         env = os.environ.copy()
         env.update(HARNESS_AGENT_SOURCE=str(source_path), PYTHONPATH='/app',
-                   AGENT_MODEL=cfg.agent_model, OPENAI_BASE_URL=cfg.openai_base_url,
-                   AGENT_API=cfg.agent_api, AGENT_REASONING_EFFORT=cfg.agent_reasoning_effort,
-                   AGENT_MAX_OUTPUT_TOKENS=str(cfg.agent_max_output_tokens))
+                   AGENT_MODEL=model, OPENAI_BASE_URL=cfg.openai_base_url,
+                   AGENT_API=execution.get('agent_api', cfg.agent_api),
+                   AGENT_REASONING_EFFORT=execution.get('agent_reasoning_effort', cfg.agent_reasoning_effort),
+                   AGENT_MAX_OUTPUT_TOKENS=str(execution.get('agent_max_output_tokens', cfg.agent_max_output_tokens)),
+                   AGENT_MAX_STEPS=str(execution.get('max_steps', 80)),
+                   AGENT_TIMEOUT_SECONDS=str(execution.get('agent_timeout_seconds', 300)))
         deadline = time.monotonic() + cfg.benchmark_timeout_seconds
         execution_error = None
         with (root / 'harbor.log').open('w') as log:
@@ -195,7 +210,7 @@ class HarborRunner:
         results = parse_results(root / 'benchmark', job['request']['task_ids'])
         results['runner_exit_code'] = process.returncode
         results['runner_log'] = read_text(root / 'harbor.log', 12000)
-        results['agent_model'] = cfg.agent_model
+        results['agent_model'] = model
         results['sandbox'] = 'docker'
         if execution_error:
             execution_error.results = results

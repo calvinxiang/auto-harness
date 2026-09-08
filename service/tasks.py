@@ -1,4 +1,6 @@
 """Fixed evaluation subset; no user-controlled datasets or executable task paths."""
+HOLDOUT_TASKS = ['cancel-async-tasks', 'openssl-selfsigned-cert', 'large-scale-text-editing']
+
 TASKS = {
     'fix-git': 'Git recovery and repository inspection',
     'regex-log': 'Text processing and precise output formatting',

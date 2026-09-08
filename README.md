@@ -1,9 +1,10 @@
 # Agent Optimization Service
 
-A FastAPI service that queues TerminalBench runs, executes a terminal agent inside
-Docker task containers, proposes Python agent-code improvements using an LLM, and persists
-every iteration in PostgreSQL. Organization administrators manage members and see
-all organization jobs; members submit and view their own jobs.
+A FastAPI service that runs and optimizes terminal agents in Docker sandboxes.
+PostgreSQL stores jobs, immutable multi-file harness packages, skills, proposals,
+experiment plans and every task attempt. The search space includes tool schemas
+and dispatch, context management, skills and agent control flow. Organization
+administrators manage members and see organization activity; members see their own.
 
 The original harness is preserved. Its documentation is in
 [docs/UPSTREAM_README.md](docs/UPSTREAM_README.md). The service is separate from
@@ -93,6 +94,28 @@ If changing models, submit a new job: existing jobs retain their execution setti
 Stop with `docker compose -f compose.service.yaml down`; named volumes preserve
 database state, artifacts and image caches.
 
+## Compare tools, context and skills
+
+```sh
+docker compose -f compose.service.yaml up -d --scale worker=2
+python test_client.py --experiment --task-ids fix-git log-summary-date-ranges nginx-request-logging --repetitions 2
+```
+
+This queues three independent LLM proposals, validates their complete packages in
+offline sandboxes, and compares them with a frozen baseline: 24 development task
+executions in this example. Omitting `--task-ids` uses the full ten-task subset.
+The model and budgets stay fixed across versions. A failed/worse candidate does
+not erase other results or stop an already submitted experiment. Complete source,
+file hashes/diffs, proposals, per-task outcomes and iteration history are saved by
+the client. No experimental candidate is automatically promoted.
+
+The client resumes from its saved `--state` file; completed task trials are not
+rerun. `--prepare-only` generates proposals without benchmark execution. Optional
+held-out tasks run after development trials and cannot be supplied as proposal
+evidence through the API. See [the package and experiment API](docs/EXPERIMENT_PLATFORM.md)
+for commands, schema, profiles and limitations, and [the failure drill](docs/OPERATIONS.md)
+for measured worker recovery and capacity behavior.
+
 ## API and roles
 
 All routes below except organization creation require
@@ -122,14 +145,17 @@ Example submission:
 ```
 
 Omitting tasks selects all 10. `max_iterations` counts proposals **after baseline**,
-ranges from 0 to 5, and defaults to 2. The server fixes models, dataset, budgets
-and provider. Requests cannot supply code, paths or arbitrary datasets. Invalid
+ranges from 0 to 5, and defaults to 2. This original optimization endpoint uses
+server-configured models and budgets. The separate harness-version endpoint accepts
+validated package contents, and experiments accept bounded model profiles. All
+benchmark task IDs remain allowlisted. Invalid
 fields, duplicate/unknown IDs and invalid bounds return 422. `/openapi.json`
 describes request and response schemas.
 
 `Idempotency-Key` makes concurrent retries return the same job for the same user
 and organization; reuse with a changed body returns 409. Each organization may
-have at most 10 queued/running jobs (429 thereafter). Missing/invalid tokens return
+have at most 10 queued/running non-trial jobs and three active experiments (429
+thereafter). Trial admission uses a shared sandbox capacity pool. Missing/invalid tokens return
 401, unauthorized admin operations return 403, and inaccessible jobs/organizations
 return 404 to avoid leaking their existence.
 
@@ -183,9 +209,12 @@ flowchart LR
 **Queue and recovery.** PostgreSQL is queue and source of truth, avoiding a second
 broker and database/broker dual writes. Workers claim with `FOR UPDATE SKIP LOCKED`,
 renew a 90-second lease every 10 seconds, and fence writes with a unique claim token.
-No transaction remains open during inference or benchmarking. Crashes permit reclaim
-after lease expiry, up to three worker attempts, then fail explicitly. Concurrent
-claims and restart recovery are tested against PostgreSQL.
+No transaction remains open during inference or benchmarking. A shared pool limits
+running sandbox work across workers. Reservations survive lease expiry until scoped
+cleanup completes, with a 60-second stale-worker cleanup grace. Engine failures
+retain capacity. An independent lease watchdog stops execution even if a database
+heartbeat blocks. Trials allow up to three worker attempts, then fail explicitly.
+Concurrent claims and restart recovery are tested against PostgreSQL and Docker.
 
 **State.** Before execution, an iteration persists its editable Python module,
 prompt, full runnable source, SHA-256, code diff and proposal. Static and sandbox
@@ -200,11 +229,14 @@ the worker observes it at its next heartbeat and stops Harbor/remaining containe
 **Agent isolation.** The original template uses a Harbor external agent.
 `service/harbor_agent.py` instead installs a standalone adaptation inside each task
 environment. The baseline preserves the original prompt and bash tool loop.
-The optimizer can replace `service/agent_policy.py`'s behavior: prompt, tool schemas,
+The original optimizer can replace `service/agent_policy.py`'s behavior: prompt, tool schemas,
 tool dispatch, helper functions, context management and the `run_agent` control loop.
 It returns a complete Python module rather than a patch to shared repository files.
 The worker parses and packages this code as data; it never imports or executes it.
-The runtime and Harbor adapter are maintained by the service, with a fixed model,
+The package optimizer additionally changes Python helpers, reusable skill procedures
+and resources, and JSON configuration. Packages record file hashes, parent lineage
+and diffs, and load only inside the sandbox. The runtime and Harbor adapter are
+maintained by the service, with a frozen experiment model,
 80 model-call budget, command timeout and external 300-second process watchdog.
 
 The editable contract is `run_agent(api, instruction)`. `api.model(messages, tools)`
@@ -232,7 +264,9 @@ verifier summaries, runtime metadata, observed trace counts, previously passing
 tasks and previous proposal/score history. It proposes a focused code
 change to address a general failure pattern. Pydantic validates its JSON response;
 static checks validate Python/interface shape and reject explicit benchmark IDs,
-protected paths, credential names and unsupported imports. A disposable container
+protected paths and credential names. The original single-module optimizer also
+restricts imports; multi-file packages permit standard-library/local helpers and
+other dependencies already available in the sandbox. A disposable container
 then checks import, a model/tool interaction and termination with an offline fixture:
 no network, credentials or task data, read-only filesystem, 128 MB RAM, 15 seconds.
 These checks catch common defects; they do not prove arbitrary Python safe or prevent
@@ -246,11 +280,13 @@ version is retained. Infrastructure errors fail with evidence rather than becomi
 false learning signals. Missing results never disappear from the denominator.
 
 The same subset guides and evaluates automatic jobs, so improvement may overfit.
-These are development scores, not evidence of generalization. A separate operator
-tool generates reviewable proposals from saved evidence and evaluates frozen
-versions with repeated development trials and three held-out tasks. It checkpoints
-each run, preserves all outcomes, and never feeds held-out results to the optimizer.
-See [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) for commands and the evaluation plan.
+These are development scores, not evidence of generalization. The experiment API
+freezes independent variants, repeated development trials and optional held-out
+tasks. Every trial uses the durable queue; completed trials survive worker recovery.
+It preserves all outcomes and rejects held-out evidence in proposal requests.
+The older operator CLI is retained for historical experiments; it bypasses shared
+admission and should not run concurrently with managed work. See
+[docs/EXPERIMENT_PLATFORM.md](docs/EXPERIMENT_PLATFORM.md) for the current workflow.
 This does not change the automatic API acceptance policy or promote experimental
 versions into existing jobs. Small comparisons remain sensitive to sampling noise.
 
@@ -271,7 +307,7 @@ docker compose -f compose.service.yaml run --rm --no-deps -e DATABASE_URL=postgr
 ```
 
 If you changed `POSTGRES_PASSWORD`, use that password in the test URL. Tests truncate
-only this database. **37 tests pass.** They cover tenant/owner isolation, roles, idempotency, concurrent
+only this database. **57 tests pass.** They cover tenant/owner isolation, roles, idempotency, concurrent
 claims, fencing, recovery, cancellation, history/plateau behavior, regressions,
 malformed results, optimizer validation, and the actual client over live HTTP.
 
@@ -287,7 +323,10 @@ A code change adds a tool and dispatch branch; a local HTTP fixture invokes it t
 execute a harmless command that checks isolation and prints a marker. The verifier
 rejects the deliberately unsolved task. The second checks that offline preflight
 accepts text/finish-tool completion and rejects crashing code, broken tool history
-and an infinite loop. These verify integration,
+and an infinite loop, and loads a package helper module plus a declared skill.
+The separate [operational drill](docs/OPERATIONS.md) verified four worker processes
+under a two-slot limit, worker death, stale-write fencing, cancellation, sandbox
+interruption and cleanup. These verify integration,
 **not LLM performance**. No fixture mode is exposed in the production API/worker.
 Live code optimization completed the full 10-task subset and an automatic Python
 change: baseline **4/10**, candidate **1/10**, candidate rejected, baseline retained.
@@ -324,14 +363,14 @@ structured measurements. Historical prompt-only data is in docs/live-results.jso
 ## Scope, omissions and more time
 
 All five milestones have implementation paths and automated coverage. The service
-optimizes a Python agent module while keeping its runtime/benchmark infrastructure
+optimizes versioned harness packages while keeping its runtime/benchmark infrastructure
 fixed, supports one sandbox backend and OpenAI Chat Completions/Responses inference,
 and uses operator token provisioning rather than SSO. Live LLM validation exercised
 the full loop with code changes and rejection of an unsuccessful candidate. E2B is a natural
 future backend, but is not claimed as tested.
 
 With more time: larger repeated evaluation sets, statistical acceptance criteria, spend
-accounting/budgets, fair organization scheduling, per-task checkpoints, transient
+accounting/budgets, stronger weighted fairness and model-rate admission, transient
 provider retry policy, artifact retention/object storage, connection pooling,
 token rotation/expiry and audit events, egress controls and VM-backed sandboxes.
 

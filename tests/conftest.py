@@ -13,5 +13,6 @@ def database(monkeypatch):
     migrate()
     with connect() as conn:
         conn.execute('TRUNCATE jobs,iterations,memberships,organizations,users CASCADE')
+        conn.execute('UPDATE execution_pool SET capacity=8 WHERE id=1')
     yield
     settings.cache_clear()

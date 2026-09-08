@@ -89,6 +89,9 @@ def main():
 
 if __name__ == '__main__':
     try:
+        if '--experiment' in sys.argv:
+            sys.argv.remove('--experiment')
+            from experiment_client import main
         sys.exit(main())
     except (RuntimeError, TimeoutError, urllib.error.URLError) as exc:
         print(str(exc), file=sys.stderr)

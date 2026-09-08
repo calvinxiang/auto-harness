@@ -7,12 +7,24 @@ from uuid import uuid4
 from service.agent_source import baseline_code, render_code, validate_code
 from service.config import settings
 from service.runner import HarborRunner
+from service.packages import baseline_package, package_snapshot
 
 
 def main():
     os.environ['ARTIFACTS_DIR'] = '/artifacts/smoke'
     settings.cache_clear()
     runner = HarborRunner()
+    package = baseline_package()
+    package['files']['helper.py'] = "def check(value):\n    assert 'Verify' in value\n"
+    package['files']['skills/verify/SKILL.md'] = 'Verify observed output against the instruction.'
+    package['skills'] = [{'name': 'verify', 'description': 'General verification',
+                          'path': 'skills/verify/SKILL.md', 'resources': []}]
+    package['files']['agent.py'] = 'from helper import check\n' + package['files']['agent.py'].replace(
+        'def run_agent(api, instruction):',
+        "def run_agent(api, instruction):\n    check(api.read_asset(api.skills()[0]['path']))")
+    validation = runner.preflight({'id': uuid4(), 'claim_token': uuid4()},
+        {'id': uuid4(), 'number': 0, 'agent_source': package_snapshot(package)['agent_source']}, Event())
+    assert validation['status'] == 'passed', validation
     cases = {
         'import_failure': baseline_code() + '\nraise RuntimeError("contract rejection fixture")\n',
         'invalid_tool_history': baseline_code().replace("messages.append({'role': 'tool'", "messages.append({'role': 'user'"),
@@ -54,7 +66,7 @@ def run_agent(api, instruction):
         assert result['status'] == 'failed', (name, result)
         outcomes[name] = {'status': result['status'], 'exit_code': result['exit_code']}
     assert outcomes['infinite_loop']['exit_code'] in (124, 137)
-    print(json.dumps({'sandbox_validation': 'passed', 'completion_protocols': ['text', 'finish_tool'],
+    print(json.dumps({'sandbox_validation': 'passed', 'package_helpers_and_skills': 'passed', 'completion_protocols': ['text', 'finish_tool'],
                       'rejected_candidates': outcomes}))
 
 

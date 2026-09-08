@@ -16,21 +16,56 @@ class LeaseLost(RuntimeError):
 def claim():
     cfg = settings()
     with connect() as conn:
+        # Capacity is shared by every worker, and retained until sandbox cleanup.
+        capacity = conn.execute('SELECT capacity FROM execution_pool WHERE id=1 FOR UPDATE').fetchone()['capacity']
+        used = conn.execute('SELECT COALESCE(sum(slots),0) AS n FROM execution_reservations').fetchone()['n']
         exhausted = conn.execute("""UPDATE jobs SET status='failed',stop_reason='worker_attempts_exhausted',
             error='{"code":"worker_attempts_exhausted","message":"Worker lease expired repeatedly"}',
             finished_at=now(),updated_at=now(),lease_until=NULL
             WHERE status='running' AND lease_until<now() AND attempts>=%s RETURNING id""", (cfg.max_attempts,)).fetchall()
         for row in exhausted:
             conn.execute("UPDATE iterations SET status='interrupted',finished_at=now() WHERE job_id=%s AND status='running'", (row['id'],))
-        row = conn.execute("""SELECT * FROM jobs WHERE (status='queued' OR
+        rows = conn.execute("""SELECT * FROM jobs WHERE (status='queued' OR
             (status='running' AND lease_until<now())) AND attempts<%s
-            ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1""", (cfg.max_attempts,)).fetchone()
+            AND LEAST(2,GREATEST(1,jsonb_array_length(request->'task_ids')))<=%s
+            AND NOT EXISTS (SELECT 1 FROM execution_reservations r WHERE r.job_id=jobs.id)
+            AND (request->>'split' IS DISTINCT FROM 'heldout' OR NOT EXISTS (
+                SELECT 1 FROM jobs d WHERE d.request->>'experiment_id'=jobs.request->>'experiment_id'
+                AND d.request->>'split'='development' AND d.status IN ('queued','running')))
+            ORDER BY (SELECT COALESCE(sum(r.slots),0) FROM execution_reservations r
+                      JOIN jobs owner ON owner.id=r.job_id WHERE owner.org_id=jobs.org_id),
+                     created_at,id FOR UPDATE SKIP LOCKED LIMIT 1""", (cfg.max_attempts, capacity-used)).fetchall()
+        row = next((r for r in rows if min(2, max(1, len(r['request'].get('task_ids', [])))) <= capacity-used), None)
         if not row:
             return None
         conn.execute("UPDATE iterations SET status='interrupted',finished_at=now() WHERE job_id=%s AND status='running'", (row['id'],))
-        return conn.execute("""UPDATE jobs SET status='running',attempts=attempts+1,claim_token=%s,
+        job = conn.execute("""UPDATE jobs SET status='running',attempts=attempts+1,claim_token=%s,
             lease_until=now()+make_interval(secs=>%s),started_at=COALESCE(started_at,now()),updated_at=now()
             WHERE id=%s RETURNING *""", (uuid4(), cfg.lease_seconds, row['id'])).fetchone()
+        slots = min(2, max(1, len(job['request'].get('task_ids', []))))
+        conn.execute('INSERT INTO execution_reservations(claim_token,job_id,slots) VALUES(%s,%s,%s)',
+                     (job['claim_token'], job['id'], slots))
+        return job
+
+
+def release_reservation(job):
+    """Caller must finish scoped sandbox cleanup before returning capacity."""
+    with connect() as conn:
+        conn.execute('DELETE FROM execution_reservations WHERE claim_token=%s AND job_id=%s',
+                     (job['claim_token'], job['id']))
+
+
+def record_output(job, output):
+    with connect() as conn:
+        owned(conn, job)
+        conn.execute('UPDATE jobs SET output=%s,updated_at=now() WHERE id=%s', (Jsonb(output), job['id']))
+
+
+def complete_output(job, output):
+    with connect() as conn:
+        owned(conn, job)
+        conn.execute("UPDATE jobs SET output=%s,status='succeeded',stop_reason='proposal_complete',finished_at=now(),updated_at=now(),lease_until=NULL WHERE id=%s",
+                     (Jsonb(output), job['id']))
 
 
 def heartbeat(job):

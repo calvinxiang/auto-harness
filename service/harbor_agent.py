@@ -29,10 +29,15 @@ class SandboxHarnessAgent(BaseAgent):
             await environment.upload_file(path, '/opt/harness/instruction.txt')
         # Only inference credentials cross the boundary: no DB, bootstrap or E2B key.
         env = {key: os.environ[key] for key in ('OPENAI_API_KEY', 'OPENAI_BASE_URL', 'AGENT_MODEL')}
-        for key in ('AGENT_API', 'AGENT_REASONING_EFFORT', 'AGENT_MAX_OUTPUT_TOKENS'):
+        for key in ('AGENT_API', 'AGENT_REASONING_EFFORT', 'AGENT_MAX_OUTPUT_TOKENS', 'AGENT_MAX_STEPS'):
             if key in os.environ:
                 env[key] = os.environ[key]
-        result = await environment.exec('timeout --signal=TERM --kill-after=5s 300s python3 /opt/harness/agent.py', env=env, timeout_sec=320)
+        timeout = max(30, min(300, int(os.environ.get('AGENT_TIMEOUT_SECONDS', '300'))))
+        result = await environment.exec(f'timeout --signal=TERM --kill-after=5s {timeout}s python3 /opt/harness/agent.py', env=env, timeout_sec=timeout+20)
+        # Trusted supervisor evidence survives a killed agent's stale meta.json.
+        (self.logs_dir / 'execution.json').write_text(json.dumps({'exit_code': result.return_code,
+            'timeout_seconds': timeout, 'watchdog_timeout': result.return_code == 124,
+            'killed': result.return_code == 137}))
         try:
             meta_path = self.logs_dir / 'meta.json'
             await environment.download_file('/logs/agent/meta.json', meta_path)

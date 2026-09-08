@@ -1,5 +1,62 @@
 # Agent optimization service handoff
 
+## In progress: live package experiment (2026-09-08 19:17 Toronto)
+
+Platform deployed with two workers, capacity two, migrations 003/004 applied.
+55 DB tests and real multi-file offline validation passed. Operational proof passed
+four workers/two slots, kill/recovery/cancel/sandbox interruption; docs/OPERATIONS.md
+and operational-results.json contain measured results (33.61s, peak 2, no leftovers).
+First proposal set: two valid but rejected on review for fixture special cases and
+mixed changes; context response schema failed. Preserved in ignored
+workspace/package-search-results.json. Optimizer now forbids fixture special cases,
+focuses dimension changes, supports review_feedback, preserves raw malformed output.
+Three replacements passed static/offline validation and were reviewed as focused:
+tools structured bash results; context tool-output compaction; skills discovered
+and loaded from separate Markdown. Generation used GPT-5.4 medium; evaluation uses
+Astra Responses xhigh 32768, all fixed across versions. New 36-trial experiment
+b8786371-fef7-4617-9736-339126965685 is running. Client session 65246, state
+workspace/package-search-v2-state.json; result workspace/package-search-v2-results.json.
+Two repetitions of fix-git/log-summary-date-ranges/nginx-request-logging plus one
+held-out repetition of cancel-async-tasks/openssl-selfsigned-cert/large-scale-text-editing
+for baseline and tools/context/skills. Org b10dc6fe-59b0-4b6b-885a-18e2c6444287.
+Resume with python test_client.py --experiment --state workspace/package-search-v2-state.json
+--output workspace/package-search-v2-results.json. Do not deploy/recreate workers
+while this runs. Small code refinements and two additional tests added after deploy
+passed (57 total); new images are built. Remaining: finish and analyze live trial results,
+verify actual mechanism use from artifacts, publish sanitized exact versions/results,
+final docs/PR update, commit/push/check CI. No new permission needed.
+
+## Earlier implementation checkpoint
+
+User authorized the four slices in docs/EXPERIMENT_PLATFORM_PLAN.md. Implemented
+immutable multi-file versions/skills, async package proposals, durable experiment
+and task trials, frozen profiles, held-out gating, tenant checks, shared capacity
+reservations, cleanup before reuse, and an independent lease watchdog. Migration
+003 is applied to harness_test only; production deployment still pending. 52 tests
+passed before the latest small recovery/telemetry refinements. New Docker images
+built, but production is still cc80da2. Remaining: resumable experiment client,
+real multi-file sandbox check, actual worker crash/cancel/capacity proof, three live
+tools/context/skills variants with a controlled comparison, docs and PR update.
+Do not stop at test coverage or claim production scalability. Never print .env or
+workspace/client-*.json credentials. Existing PR #32 authorization persists.
+
+## New interviewer clarification: prioritize experiment platform
+
+User relayed that infrastructure must be solid/scalable for experiments and that
+the search space matters more than immediate improvements. The ideal search space
+is the full agent harness, explicitly including tools, skills and context handling.
+Do not treat another model upgrade or a better score as the primary next deliverable.
+
+Audited the code after this clarification. Current optimizer changes tools/context/
+loop but only in one Python module; there is no first-class skill/package version.
+API jobs have durable leases/fencing, but `service.experiments` uses a sequential
+JSON report outside that queue. Experiment-level ownership, task-level resumability,
+resource admission and actual multi-worker capacity evidence need follow-up.
+37 passing tests do not establish production scalability. No new benchmark or
+provider call was run for this assessment. See `docs/EXPERIMENT_PLATFORM_PLAN.md`
+for the concrete proposed slices and current/remaining capability map. That file
+is a planning record, not a claim that the expansion is already implemented.
+
 ## Latest state: flagship baseline complete (2026-09-08)
 
 User authorized trying the strongest available model, with price not a constraint.

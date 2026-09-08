@@ -110,6 +110,7 @@ def test_concurrent_claims_and_lease_fencing():
         iteration = queue.begin_iteration(old, 0, source, sha, 'A safe prompt', None)
         with connect() as conn:
             conn.execute("UPDATE jobs SET lease_until=now()-interval '1 second' WHERE id=%s", (old['id'],))
+        queue.release_reservation(old)  # Simulated runner cleanup completed.
         recovered = queue.claim()
         assert recovered['id'] == old['id']
         assert recovered['claim_token'] != old['claim_token']
@@ -164,6 +165,7 @@ def test_completed_checkpoint_survives_worker_restart():
         queue.complete_iteration(old, iteration, result(['fix-git', 'regex-log'], 1))
         with connect() as conn:
             conn.execute("UPDATE jobs SET lease_until=now()-interval '1 second' WHERE id=%s", (old['id'],))
+        queue.release_reservation(old)  # Simulated runner cleanup completed.
         recovered = queue.claim()
         assert recovered['next_iteration'] == 1
         class Runner(PreflightFixture):

@@ -52,6 +52,7 @@ class JobOut(BaseModel):
     best_score: float | None
     stop_reason: str | None
     error: dict[str, Any] | None
+    output: dict[str, Any] | None = None
 
 
 class TaskResultOut(BaseModel):
@@ -62,6 +63,7 @@ class TaskResultOut(BaseModel):
     trace: str = ''
     trace_signals: dict[str, Any] = Field(default_factory=dict)
     agent_metadata: str | None = None
+    supervisor_metadata: str | None = None
     verifier_output: str = ''
 
 

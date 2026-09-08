@@ -1,67 +1,23 @@
 # Proposed title
 
-Add durable multi-tenant agent optimization service
+Add durable harness experiments and multi-tenant optimization service
 
 # Proposed description
 
-The original harness requires a coding agent to drive a shared-file optimization
-loop. This adds an HTTP service that accepts benchmark jobs immediately, executes
-the terminal agent inside disposable Docker task containers, and persists proposed
-Python agent versions, code diffs, validation outcomes, benchmark evidence and
-acceptance decisions in PostgreSQL.
+The original harness needs a coding agent to drive a shared-file loop. This adds a FastAPI/PostgreSQL service that queues sandboxed TerminalBench work, proposes versioned harness changes, and preserves the full history. Experiments now compare multi-file packages with independent tools, context and skill hypotheses; a worker crash retries an interrupted task while keeping completed trials.
 
-- FastAPI with organization membership/roles, ownership checks, idempotent job
-  submission, polling, cancellation and full iteration history.
-- PostgreSQL queue with SKIP LOCKED claims, renewable leases, fenced checkpoints
-  and bounded crash recovery. Separate API and worker; sandbox engine uses mutual TLS.
-- Fixed 10-task TerminalBench 2.0 subset, sandbox-installed agent runtime and a
-  code optimizer for tools, context management and agent control flow. Proposed
-  modules pass static checks and an offline sandbox contract check before evaluation.
-  Only strictly improving versions without task regressions are retained.
-- End-to-end Python client, versioned SQL migrations, locked dependencies, Compose
-  setup, CI and documented tradeoffs. Original CLI workflow remains available.
-- Operator evaluation tool for reviewed proposals, repeated comparisons and a
-  separate held-out set, with frozen source hashes and resumable run checkpoints.
+- Immutable packages contain Python modules, skill procedures/resources and configuration, with parent lineage, file diffs, hashes and exact runnable source. Proposed code loads only inside Docker sandboxes.
+- Durable experiments freeze candidate versions, model/budget profiles, development/held-out splits and repetitions. Each task trial uses leased, fenced PostgreSQL jobs. Cancellation covers unfinished children; tenant/owner checks cover versions, experiments, jobs and evidence.
+- A shared admission pool bounds work across workers and retains reservations until cleanup. A separate lease watchdog stops execution during blocked heartbeats. The task supervisor records exits/timeouts independently of agent metadata.
+- Asynchronous package proposals retain validation and failure evidence. Held-out evidence is rejected as proposal input. Exploration evaluates the frozen candidate set; promotion remains separate. The original iterative optimization endpoint retains strict improvement/no-regression acceptance.
+- Compose setup, migrations, locked dependencies, CI, the resumable `test_client.py --experiment` workflow, and operator inspection of actual context/skill/tool use are documented. The original CLI is preserved.
 
-Validation: 37 PostgreSQL tests pass, including the actual test client over live
-HTTP with deterministic execution fixtures. A real Harbor/Docker task smoke passes,
-verifying runtime execution, trace capture, verifier integration and denial of Docker
-API access without client certificates. The smoke executes an added tool and its
-dispatch using a local model fixture, deliberately leaving the task unsolved.
-Separate offline containers reject crashing code, invalid tool history and an
-infinite loop within the configured timeout.
+Validation: **57 PostgreSQL tests pass**, including both client workflows over real HTTP, experiment resume/idempotency, cross-tenant access, held-out gating, proposal checkpoints, fencing and capacity. Offline Docker checks load package helpers/skills and reject crashing code, broken tool history and an infinite loop. The real worker failure drill used four processes with two slots: killed worker recovered, stale write rejected, completed history preserved, cancellation and task interruption handled, zero remaining containers/reservations. Peak observed concurrency was two. Its 33.61-second synthetic workload is infrastructure evidence, not production benchmark throughput.
 
-Live `gpt-4.1-mini` code optimization ran a 10-task baseline and an automatically
-proposed Python change in 17m12s with zero runner errors. Baseline passed 4/10;
-candidate passed 1/10, was rejected, and baseline score 0.4 was retained. Full
-code/diff/validation/history were retrieved through the client. The proposed
-empty-response diagnosis was unsupported by baseline traces; optimizer inputs now
-include runtime metadata, trace observations and passing-task context.
+The controlled package comparison is currently running: three development tasks repeated twice and three designated held-out tasks once, across baseline and tools/context/skills versions (36 trials). GPT-5.4 generated the packages; all trial agents use the same Astra Responses profile. Initial rejected proposals are retained. Logs already confirm structured command results, tool-output compaction and declared skill loading. Final scores will be added after all trials finish.
 
-A separate operator-reviewed GPT-5.4 proposal added a completion-verification tool.
-With both benchmark agents fixed to `gpt-4.1-mini`, 46 task executions compared
-two development repetitions (baseline 2/20, candidate 4/20) and three held-out tasks
-(baseline 1/3, candidate 0/3). Each development pair had a regression. One candidate
-damaged its own task filesystem; its missing verifier reward is preserved and
-explicitly assessed as a zero-score failure without retry. The candidate is not
-recommended for promotion. All outcomes, generated source, hashes, review decisions
-and usage are in docs/EXPERIMENT_RESULTS.md and docs/code-experiment-results.json.
-This reviewed experiment is separate from the automatic API loop and does not
-change an existing job's history or best version. No reliable general gain is claimed.
+Earlier live evidence includes a full ten-task automatic code optimization that rejected a regressing candidate, a repeated 46-trial comparison whose development gain did not carry over to held-out tasks, and the unchanged-policy Astra baseline at 7/10. These historical reports remain available; no general performance improvement is claimed.
 
-A subsequent baseline with GPT-6 Astra and extra-high reasoning passed **7/10** in
-13m01s, with zero runner errors and no optimizer proposals. The original policy
-was unchanged; new Responses transport preserves reasoning/phase history and
-rejects incomplete model output. Model, transport and reasoning/output allowance
-changed together, so this is not a model-only ablation. Historical mini baselines
-scored 4/10, 1/10 and 1/10. Three failures remain, with per-task analysis and exact
-frozen source in docs/FLAGSHIP_EXPERIMENT.md and docs/flagship-results.json.
+Scope limits: one shared Docker engine/artifact volume, no multi-host placement or HA, scoped-key inference proxy, statistical promotion, or production VM isolation. E2B is not implemented. The historical operator comparison CLI bypasses managed admission and should not run concurrently with worker experiments.
 
-E2B integration, optimization of service/runtime infrastructure,
-statistical promotion rules and production-grade VM isolation are outside this implementation.
-
-Review links: [setup and design](https://github.com/calvinxiang/auto-harness/blob/feat/agent-optimization-service/README.md),
-[experiment report](https://github.com/calvinxiang/auto-harness/blob/feat/agent-optimization-service/docs/EXPERIMENT_RESULTS.md),
-[generated code and structured results](https://github.com/calvinxiang/auto-harness/blob/feat/agent-optimization-service/docs/code-experiment-results.json),
-[flagship baseline](https://github.com/calvinxiang/auto-harness/blob/feat/agent-optimization-service/docs/FLAGSHIP_EXPERIMENT.md),
-[validation record](https://github.com/calvinxiang/auto-harness/blob/feat/agent-optimization-service/docs/VALIDATION.md).
+Review: [setup](https://github.com/calvinxiang/auto-harness/blob/feat/agent-optimization-service/README.md), [package and experiment API](https://github.com/calvinxiang/auto-harness/blob/feat/agent-optimization-service/docs/EXPERIMENT_PLATFORM.md), [operational proof](https://github.com/calvinxiang/auto-harness/blob/feat/agent-optimization-service/docs/OPERATIONS.md), [prior comparison](https://github.com/calvinxiang/auto-harness/blob/feat/agent-optimization-service/docs/EXPERIMENT_RESULTS.md), [Astra baseline](https://github.com/calvinxiang/auto-harness/blob/feat/agent-optimization-service/docs/FLAGSHIP_EXPERIMENT.md).

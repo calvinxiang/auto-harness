@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     heartbeat_seconds: int = 10
     max_attempts: int = 3
     benchmark_timeout_seconds: int = 3600
+    stale_cleanup_grace_seconds: int = 60
 
 
 @lru_cache

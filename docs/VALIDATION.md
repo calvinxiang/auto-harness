@@ -1,5 +1,12 @@
 # Validation record
 
+Latest platform checks: **57 PostgreSQL tests pass**, including experiment
+ownership/idempotency, held-out gating, immutable package recovery, capacity
+admission and cleanup failures. Real offline Docker checks load Python helpers
+and skill assets. Four worker processes under two slots passed the crash,
+cancellation and sandbox-failure drill: [OPERATIONS.md](OPERATIONS.md).
+Earlier test counts below describe their historical checkpoints.
+
 Recorded 2026-09-08 on Windows Docker Desktop using Linux containers.
 
 ## Flagship baseline

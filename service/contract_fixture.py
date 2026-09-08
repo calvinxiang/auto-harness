@@ -24,11 +24,15 @@ def check(path):
                             'verification_output_excerpt': 'contract-check'})}}]}
             return response
 
-    module = types.ModuleType('agent_policy')
-    sys.modules[module.__name__] = module
-    exec(compile(runtime['POLICY_SOURCE'], '<agent_policy>', 'exec'), module.__dict__)
+    if 'load_policy' in runtime:
+        namespace = runtime['load_policy']()
+    else:
+        module = types.ModuleType('agent_policy')
+        sys.modules[module.__name__] = module
+        exec(compile(runtime['POLICY_SOURCE'], '<agent_policy>', 'exec'), module.__dict__)
+        namespace = module.__dict__
     fixture = FixtureAPI()
-    module.run_agent(fixture, 'Run a harmless inspection command and then finish.')
+    namespace['run_agent'](fixture, 'Run a harmless inspection command and then finish.')
     if fixture.calls < 2 or fixture.bash_calls < 1 or not fixture.outputs:
         raise ValueError('Agent did not complete the model/tool/result contract')
     print(json.dumps({'contract': 'passed', 'model_calls': fixture.calls}))
