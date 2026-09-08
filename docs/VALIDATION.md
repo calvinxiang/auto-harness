@@ -2,6 +2,33 @@
 
 Recorded 2026-09-08 on Windows Docker Desktop using Linux containers.
 
+## Python code optimization extension
+
+The optimizer now changes the complete agent policy module: tool definitions,
+dispatch, context handling, helper functions, prompt and the agent loop. The
+runtime/model configuration and benchmark remain service-controlled.
+
+- 24 PostgreSQL tests pass, including preservation of invalid code proposals and
+  the best version, source diffs, validation results, tool-message pairing, static
+  checks that never execute proposed code, and independent trace preservation.
+- Offline preflight and a real Harbor task successfully executed a code change
+  adding a tool and dispatch branch. Run ID:
+  `021c516b-3fde-4cc8-a30d-93909d6ed194`. This used a local HTTP model fixture,
+  checked task isolation, and deliberately left the benchmark task unsolved.
+- Real offline containers rejected import-time failure and broken tool history
+  (exit 1), and terminated an infinite loop (exit 124) under the 15-second timeout.
+  Reproduce with `docker compose -f compose.service.yaml run --rm --no-deps worker python -m tests.sandbox_validation`.
+- A live 10-task baseline plus one code proposal is running as job
+  `4f31b776-a891-4bac-a0c3-3b9f07e14387`. Record measured results after completion.
+- An initial deployment attempt (`3734951a-e9b5-470f-a36e-6ae135b5fea6`) stopped
+  before inference because the separate migration image was stale. Rebuilt all
+  images and confirmed migrations 001 and 002 before resubmitting. This is not a
+  benchmark result.
+
+The historical measurements below belong to the earlier prompt-only implementation.
+
+## Initial implementation checks
+
 - 13 PostgreSQL integration/edge tests passed. One non-failing upstream Starlette/
   AnyIO deprecation warning appeared.
 - `test_client.py` submitted to a live HTTP server, polled and printed full

@@ -4,7 +4,8 @@ import signal
 import threading
 
 from . import queue
-from .agent_source import baseline_prompt, render
+from .agent_source import (AgentValidationError, baseline_code, baseline_prompt,
+                           render_code, source_diff, validate_code)
 from .config import settings, execution_config
 from .db import connect
 from .optimizer import propose
@@ -44,15 +45,32 @@ def process_job(job, runner=None, optimizer=propose, shutdown=None):
             if retry:
                 prompt, proposal = retry['prompt'], retry['proposal']
                 source, source_hash = retry['agent_source'], retry['source_sha256']
+                code, diff = retry.get('agent_code'), retry.get('source_diff')
             else:
                 proposal = None
                 prompt = baseline_prompt()
+                code = baseline_code()
+                diff = None
                 if number > 0:
                     best = next(r for r in records if r['id'] == job['best_iteration_id'])
                     proposal = optimizer(best, records)
-                    prompt = proposal['system_prompt']
-                source, source_hash = render(prompt)
-            iteration = queue.begin_iteration(job, number, source, source_hash, prompt, proposal)
+                    code = proposal['agent_code']
+                    prompt = best['prompt']
+                    diff = source_diff(best.get('agent_code') or baseline_code(best['prompt']), code)
+                source, source_hash = render_code(code)
+            iteration = queue.begin_iteration(job, number, source, source_hash, prompt, proposal, code, diff)
+            if code is not None:
+                try:
+                    prompt = validate_code(code)
+                except AgentValidationError as exc:
+                    queue.reject_invalid_candidate(job, iteration,
+                        {'status': 'failed', 'stage': 'static', 'message': str(exc)})
+                    return
+                validation = runner.preflight(job, iteration, stop)
+                queue.record_validation(job, iteration, validation, prompt)
+                if validation['status'] != 'passed':
+                    queue.reject_invalid_candidate(job, iteration, validation)
+                    return
             results = runner.run(job, iteration, stop)
             if results['errors']:
                 queue.fail(job, {'code': 'benchmark_infrastructure_error',

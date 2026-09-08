@@ -11,7 +11,7 @@ import shlex
 import threading
 from uuid import uuid4
 
-from service.agent_source import baseline_prompt, render
+from service.agent_source import baseline_code, render_code, validate_code
 from service.config import settings
 from service.runner import HarborRunner
 
@@ -37,8 +37,9 @@ class ModelFixture(BaseHTTPRequestHandler):
             command = ("test ! -S /var/run/docker.sock && test ! -f /certs/client/key.pem && "
                        "test -z \"$DATABASE_URL\" && test -z \"$E2B_API_KEY\" && test -z \"$BOOTSTRAP_TOKEN\" && "
                        "test -z \"$DOCKER_HOST\" && python3 -c " + shlex.quote(daemon_check) + " && printf 'sandbox-smoke-ok\\n'")
+            assert any(t['function']['name'] == 'run_command' for t in body['tools'])
             message = {'role': 'assistant', 'content': None, 'tool_calls': [
-                {'id': 'smoke_call', 'type': 'function', 'function': {'name': 'bash', 'arguments': json.dumps({'command': command})}}]}
+                {'id': 'smoke_call', 'type': 'function', 'function': {'name': 'run_command', 'arguments': json.dumps({'command': command})}}]}
         data = json.dumps({'choices': [{'message': message}], 'usage': {'prompt_tokens': 0, 'completion_tokens': 0}}).encode()
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
@@ -56,17 +57,33 @@ def main():
     os.environ['OPENAI_BASE_URL'] = f'http://{address}:{server.server_port}/v1'
     os.environ['OPENAI_API_KEY'] = 'test-sandbox-key'
     os.environ['AGENT_MODEL'] = 'fixture'
+    # Standalone smoke jobs have no database lease. Keep their artifacts outside
+    # the production worker's stale-job sweep while the live service is running.
+    os.environ['ARTIFACTS_DIR'] = '/artifacts/smoke'
     settings.cache_clear()
-    source, sha = render(baseline_prompt())
+    # A deterministic CODE change adds a tool and dispatch branch, exercising more
+    # than a replacement prompt without using paid inference or solving the task.
+    code = baseline_code().replace("call['function']['name'] != 'bash'",
+                                   "call['function']['name'] not in ('bash', 'run_command')")
+    code += "\nTOOLS.append(json.loads(json.dumps(TOOLS[0])))\nTOOLS[-1]['function']['name'] = 'run_command'\n"
+    validate_code(code)
+    source, sha = render_code(code)
     job = {'id': uuid4(), 'claim_token': uuid4(), 'request': {'task_ids': ['fix-git']}}
     try:
-        results = HarborRunner().run(job, {'number': 0, 'agent_source': source}, threading.Event())
+        runner = HarborRunner()
+        iteration = {'id': uuid4(), 'number': 0, 'agent_source': source}
+        preflight = runner.preflight(job, iteration, threading.Event())
+        assert preflight['status'] == 'passed', preflight
+        results = runner.run(job, iteration, threading.Event())
+        assert results['errors'] == 0, results
         trace = json.loads(results['tasks'][0]['trace'])
         tool_outputs = [m['content'] for m in trace if m['role'] == 'tool']
         assert any('sandbox-smoke-ok' in output and 'exit code: 0' in output for output in tool_outputs), tool_outputs
         assert any('daemon-access-denied' in output for output in tool_outputs), tool_outputs
         assert results['errors'] == 0, results
+        assert any(c['function']['name'] == 'run_command' for m in trace for c in m.get('tool_calls', []))
         print(json.dumps({'smoke': 'passed', 'job_id': str(job['id']), 'isolation_checks': 'passed',
+                          'code_change': 'new tool and dispatch', 'preflight': preflight['status'],
                           'verifier_status': results['tasks'][0]['status'], 'uses_real_llm': False}))
     finally:
         server.shutdown()

@@ -53,14 +53,33 @@ def history(job_id):
         return conn.execute('SELECT * FROM iterations WHERE job_id=%s ORDER BY number,attempt', (job_id,)).fetchall()
 
 
-def begin_iteration(job, number, source, source_hash, prompt, proposal):
+def begin_iteration(job, number, source, source_hash, prompt, proposal, agent_code=None, source_diff=None):
     with connect() as conn:
         owned(conn, job)
         return conn.execute("""INSERT INTO iterations
-            (id,job_id,number,attempt,status,agent_source,source_sha256,prompt,proposal)
-            VALUES (%s,%s,%s,%s,'running',%s,%s,%s,%s) RETURNING *""",
+            (id,job_id,number,attempt,status,agent_source,source_sha256,prompt,proposal,agent_code,source_diff)
+            VALUES (%s,%s,%s,%s,'running',%s,%s,%s,%s,%s,%s) RETURNING *""",
             (uuid4(), job['id'], number, job['attempts'], source, source_hash, prompt,
-             Jsonb(proposal) if proposal else None)).fetchone()
+             Jsonb(proposal) if proposal else None, agent_code, source_diff)).fetchone()
+
+
+def record_validation(job, iteration, validation, prompt=None):
+    with connect() as conn:
+        owned(conn, job)
+        conn.execute('UPDATE iterations SET validation=%s,prompt=COALESCE(%s,prompt) WHERE id=%s',
+                     (Jsonb(validation), prompt, iteration['id']))
+
+
+def reject_invalid_candidate(job, iteration, validation):
+    """Keep invalid source/proposal for review, without replacing the best version."""
+    with connect() as conn:
+        owned(conn, job)
+        conn.execute("""UPDATE iterations SET status='failed',accepted=false,validation=%s,
+            error='{"code":"invalid_candidate","message":"Agent validation failed"}',finished_at=now()
+            WHERE id=%s""", (Jsonb(validation), iteration['id']))
+        conn.execute("""UPDATE jobs SET status='failed',stop_reason='invalid_candidate',
+            error='{"code":"invalid_candidate","message":"Agent validation failed; inspect iteration history"}',
+            finished_at=now(),updated_at=now(),lease_until=NULL WHERE id=%s""", (job['id'],))
 
 
 def complete_iteration(job, iteration, results):

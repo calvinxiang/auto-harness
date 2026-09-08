@@ -28,4 +28,4 @@ def execution_config():
     return {'dataset': 'terminal-bench@2.0', 'agent_model': cfg.agent_model,
             'optimizer_model': cfg.optimizer_model, 'sandbox_provider': cfg.sandbox_provider,
             'agent_timeout_seconds': 300, 'max_steps': 80, 'task_concurrency': 2,
-            'harbor_version': '0.1.45'}
+            'harbor_version': '0.1.45', 'agent_contract': 'python-policy-v1'}

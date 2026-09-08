@@ -1,7 +1,7 @@
 # Agent Optimization Service
 
 A FastAPI service that queues TerminalBench runs, executes a terminal agent inside
-Docker task containers, proposes prompt improvements using an LLM, and persists
+Docker task containers, proposes Python agent-code improvements using an LLM, and persists
 every iteration in PostgreSQL. Organization administrators manage members and see
 all organization jobs; members submit and view their own jobs.
 
@@ -168,8 +168,10 @@ No transaction remains open during inference or benchmarking. Crashes permit rec
 after lease expiry, up to three worker attempts, then fail explicitly. Concurrent
 claims and restart recovery are tested against PostgreSQL.
 
-**State.** Before execution, an iteration persists its prompt, full runnable source,
-SHA-256 and proposal. Results and the job's best-version pointer commit atomically.
+**State.** Before execution, an iteration persists its editable Python module,
+prompt, full runnable source, SHA-256, code diff and proposal. Static and sandbox
+validation outcomes are also retained, including invalid candidates. Results and
+the job's best-version pointer commit atomically.
 A reclaimed job retains completed iterations and retries its interrupted candidate
 with the same source/proposal in a fresh sandbox; the old attempt stays visible.
 This is at-least-once execution with fenced commits, not exactly-once external API
@@ -178,10 +180,20 @@ the worker observes it at its next heartbeat and stops Harbor/remaining containe
 
 **Agent isolation.** The original template uses a Harbor external agent.
 `service/harbor_agent.py` instead installs a standalone adaptation inside each task
-environment. It preserves the baseline prompt, bash interface, step loop and output
-truncation. The worker never executes agent reasoning or LLM-proposed source. Only
-the system prompt changes, inserted as a Python string literal into a fixed runtime.
-The optimizer cannot edit tools, budgets, task fixtures or verifiers.
+environment. The baseline preserves the original prompt and bash tool loop.
+The optimizer can replace `service/agent_policy.py`'s behavior: prompt, tool schemas,
+tool dispatch, helper functions, context management and the `run_agent` control loop.
+It returns a complete Python module rather than a patch to shared repository files.
+The worker parses and packages this code as data; it never imports or executes it.
+The runtime and Harbor adapter are maintained by the service, with a fixed model,
+80 model-call budget, command timeout and external 300-second process watchdog.
+
+The editable contract is `run_agent(api, instruction)`. `api.model(messages, tools)`
+returns an assistant message; `api.bash(command)` executes a command;
+`api.tool_result(call_id, content)` records its result. The agent can add general
+tools and alter its conversation strategy while retaining bash capability. Actual
+model requests and an independent event trace are logged even when it compacts
+its working context. See [docs/AGENT_CODE.md](docs/AGENT_CODE.md) for the contract.
 
 The API has no Docker access or inference key. The worker controls a dedicated
 Docker-in-Docker engine using mutual TLS. Task containers receive only inference
@@ -196,9 +208,18 @@ development boundary with a shared kernel. A hostile public deployment should
 use dedicated VMs/microVMs and enforce egress/disk quotas. The inference key is
 accessible to its agent; scoped keys or an inference proxy would improve this.
 
-**Optimization.** The LLM receives the best prompt, bounded failure traces,
-verifier summaries and previous proposal/score history. Pydantic validates its JSON
-response. Acceptance requires strictly higher mean reward with no regression on
+**Optimization.** The LLM receives the best Python module, bounded failure traces,
+verifier summaries and previous proposal/score history. It proposes a focused code
+change to address a general failure pattern. Pydantic validates its JSON response;
+static checks validate Python/interface shape and reject explicit benchmark IDs,
+protected paths, credential names and unsupported imports. A disposable container
+then checks import, a model/tool interaction and termination with an offline fixture:
+no network, credentials or task data, read-only filesystem, 128 MB RAM, 15 seconds.
+These checks catch common defects; they do not prove arbitrary Python safe or prevent
+all overfitting. The sandbox is the execution boundary. Invalid code stops the job
+with `invalid_candidate`, retains evidence, and preserves the previous best version.
+
+Acceptance requires strictly higher mean reward with no regression on
 previously passing tasks. A tie/regression stops with `no_improvement`; all-pass
 or the iteration cap also stops. Rejected versions stay inspectable and the best
 version is retained. Infrastructure errors fail with evidence rather than becoming
@@ -233,14 +254,18 @@ Real container integration smoke test without an LLM key:
 
 ```sh
 docker compose -f compose.service.yaml run --rm --no-deps worker python -m tests.sandbox_smoke
+docker compose -f compose.service.yaml run --rm --no-deps worker python -m tests.sandbox_validation
 ```
 
-This launches the real `fix-git` task, installed runtime and Harbor verifier. A local
-HTTP fixture supplies a harmless bash command that checks isolation and prints a
-marker. The verifier rejects the deliberately unsolved task. It verifies integration,
+The first launches the real `fix-git` task, installed runtime and Harbor verifier.
+A code change adds a tool and dispatch branch; a local HTTP fixture invokes it to
+execute a harmless command that checks isolation and prints a marker. The verifier
+rejects the deliberately unsolved task. The second checks that offline preflight
+rejects crashing code, broken tool history and an infinite loop. These verify integration,
 **not LLM performance**. No fixture mode is exposed in the production API/worker.
-Live OpenAI validation also completed the full 10-task subset and an automatic
-optimization step. The baseline passed 1/10; the candidate passed 4/10 but regressed
+The earlier prompt-only implementation completed live OpenAI validation on the
+full 10-task subset and an automatic optimization step. The baseline passed 1/10;
+the candidate passed 4/10 but regressed
 on the previously passing Nginx task, so it was rejected and the baseline retained.
 Both iterations completed without runner errors. See
 [docs/VALIDATION.md](docs/VALIDATION.md) for outcomes, timing, usage and limitations,
@@ -249,9 +274,10 @@ and [docs/live-results.json](docs/live-results.json) for structured measurements
 ## Scope, omissions and more time
 
 All five milestones have implementation paths and automated coverage. The service
-optimizes prompts rather than unrestricted agent code, supports one sandbox backend
+optimizes a Python agent module while keeping its runtime/benchmark infrastructure
+fixed, supports one sandbox backend
 and one OpenAI-compatible inference interface, and uses operator token provisioning
-rather than SSO. Live LLM validation exercised the full loop, including rejection
+rather than SSO. The initial live LLM validation exercised the full loop, including rejection
 of a candidate with higher aggregate score but a task regression. E2B is a natural
 future backend, but is not claimed as tested.
 

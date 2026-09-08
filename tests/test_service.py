@@ -8,7 +8,7 @@ import pytest
 
 from service.api import app
 from service import queue
-from service.agent_source import render
+from service.agent_source import baseline_code, render
 from service.db import connect
 from service.worker import process_job
 
@@ -27,6 +27,11 @@ def result(task_ids, passes):
               'failure_summary': None if i < passes else 'Verifier rejected output',
               'trace': '[{"role":"tool","content":"Actual fixture output"}]'} for i, tid in enumerate(task_ids)]
     return {'tasks': tasks, 'score': passes / len(tasks), 'errors': 0, 'passed': passes, 'failed': len(tasks) - passes}
+
+
+class PreflightFixture:
+    def preflight(self, job, iteration, stop):
+        return {'status': 'passed', 'stage': 'deterministic_test_fixture'}
 
 
 def test_tenant_ownership_membership_and_idempotency():
@@ -67,7 +72,7 @@ def test_optimization_history_and_plateau():
         _, headers, base = setup_org(client)
         tasks = ['fix-git', 'regex-log', 'extract-elf']
         job_id = client.post(base + '/jobs', headers=headers, json={'task_ids': tasks, 'max_iterations': 4}).json()['id']
-        class Runner:
+        class Runner(PreflightFixture):
             calls = 0
             def run(self, job, iteration, stop):
                 self.calls += 1
@@ -75,7 +80,7 @@ def test_optimization_history_and_plateau():
                 return result(tasks, min(self.calls, 2))
         def optimizer(best, records):
             return {'diagnosis': 'Missing verification', 'rationale': 'Use output to verify',
-                    'system_prompt': best['prompt'] + '\nVerify command output and retry failed commands.'}
+                    'agent_code': best['agent_code'] + '\n# Focused code fixture iteration ' + str(len(records))}
         process_job(queue.claim(), Runner(), optimizer)
         job = client.get(base + '/jobs/' + job_id, headers=headers).json()
         history = client.get(base + '/jobs/' + job_id + '/iterations', headers=headers).json()
@@ -86,6 +91,9 @@ def test_optimization_history_and_plateau():
         assert job['best_iteration_id'] == history[1]['id']
         assert history[2]['proposal']['diagnosis'] == 'Missing verification'
         assert history[0]['results']['tasks'][0]['trace']
+        assert history[1]['agent_code'] != history[0]['agent_code']
+        assert history[1]['source_diff'].startswith('--- previous/agent.py')
+        assert history[1]['validation']['status'] == 'passed'
 
 
 def test_concurrent_claims_and_lease_fencing():
@@ -108,7 +116,7 @@ def test_concurrent_claims_and_lease_fencing():
         assert not queue.heartbeat(old)
         with pytest.raises(queue.LeaseLost):
             queue.complete_iteration(old, iteration, result(['fix-git'], 1))
-        class Runner:
+        class Runner(PreflightFixture):
             def run(self, job, current, stop):
                 assert current['agent_source'] == source
                 return result(['fix-git'], 1)
@@ -136,7 +144,7 @@ def test_partial_infrastructure_failure_preserves_evidence():
     with TestClient(app) as client:
         _, headers, base = setup_org(client)
         job_id = client.post(base + '/jobs', headers=headers, json={'task_ids': ['fix-git']}).json()['id']
-        class Runner:
+        class Runner(PreflightFixture):
             def run(self, job, iteration, stop):
                 return {'score': 0, 'errors': 1, 'tasks': [{'task_id': 'fix-git', 'status': 'error', 'failure_summary': 'Container crashed'}]}
         process_job(queue.claim(), Runner())
@@ -158,9 +166,9 @@ def test_completed_checkpoint_survives_worker_restart():
             conn.execute("UPDATE jobs SET lease_until=now()-interval '1 second' WHERE id=%s", (old['id'],))
         recovered = queue.claim()
         assert recovered['next_iteration'] == 1
-        class Runner:
+        class Runner(PreflightFixture):
             def run(self, job, current, stop):
                 assert current['number'] == 1
                 return result(['fix-git', 'regex-log'], 2)
-        process_job(recovered, Runner(), lambda *_: {'system_prompt': 'Improved prompt with verification'})
+        process_job(recovered, Runner(), lambda *_: {'agent_code': baseline_code() + '\n# Code recovery fixture'})
         assert len(queue.history(old['id'])) == 2

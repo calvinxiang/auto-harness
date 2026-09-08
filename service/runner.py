@@ -5,6 +5,7 @@ from pathlib import Path
 import signal
 import re
 import subprocess
+import tempfile
 import time
 
 from .config import settings
@@ -104,6 +105,43 @@ def cleanup(prefix):
 
 
 class HarborRunner:
+    def preflight(self, job, iteration, stop_event):
+        """Import and exercise generated Python only in the dedicated sandbox engine."""
+        root = Path(settings().artifacts_dir) / 'runs' / str(job['id']) / str(job['claim_token']) / ('preflight-' + str(iteration['number']))
+        root.mkdir(parents=True, exist_ok=True)
+        (root / 'agent.py').write_text(iteration['agent_source'])
+        name = 'agent-preflight-' + str(iteration['id'])
+        command = ['docker', 'run', '--rm', '--name', name, '--network', 'none',
+                   '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
+                   '--memory', '128m', '--cpus', '1', '--pids-limit', '64', '--user', '65534:65534',
+                   '--tmpfs', '/tmp:rw,nosuid,size=16m', '--mount', f'type=bind,src={root},dst=/candidate,readonly',
+                   'python:3.12-slim', 'timeout', '--kill-after=2s', '15s',
+                   'python', '-B', '/candidate/agent.py', '--self-test']
+        # Pulling the tiny runtime image can take longer on a first run; execution
+        # itself is capped inside the container, separately from the host deadline.
+        deadline = time.monotonic() + 180
+        with tempfile.TemporaryFile() as output:
+            process = subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT)
+            try:
+                while process.poll() is None:
+                    if stop_event.wait(0.25):
+                        raise LeaseLost('Preflight interrupted')
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError('Sandbox preflight exceeded its deadline')
+                output.seek(0)
+                log = redact(output.read(8000).decode(errors='replace'))
+                if process.returncode == 125:
+                    raise RuntimeError('Preflight Docker infrastructure failed')
+                return {'status': 'passed' if process.returncode == 0 else 'failed',
+                        'stage': 'sandbox_contract', 'exit_code': process.returncode, 'log': log}
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait()
+                # Named removal is scoped to this iteration, even after timeout/cancel.
+                subprocess.run(['docker', 'rm', '-f', name], stdout=subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, timeout=30)
+
     def run(self, job, iteration, stop_event):
         cfg = settings()
         if cfg.sandbox_provider != 'docker':

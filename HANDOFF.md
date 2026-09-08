@@ -44,8 +44,12 @@ and PR. Assignment images: `Question page 1.png`, `Question page 2.png`.
 - Fixed Harbor adapter installs/runs agent Python inside each task sandbox.
 - Docker task environments with dedicated Docker-in-Docker engine. Worker connects
   using mutual TLS. API has no engine access. E2B adapter is deferred.
-- Optimize validated system prompts; persist full runnable source, proposal,
-  results and acceptance decisions, including rejected iterations.
+- User corrected prompt-only scope. Optimizer now proposes a complete Python agent
+  module (tools, context handling, loop, helpers and prompt), with a fixed supervisor.
+  Persist module, runnable bundle, diff, hash, proposal, validation and results.
+  New migration 002 adds nullable fields; old prompt-only history remains readable.
+  Static checks never execute proposed code. Offline preflight imports/exercises it
+  in a separate container before benchmark execution. See docs/AGENT_CODE.md.
 - Strict improvement acceptance, stop on plateau/iteration cap; preserve best.
 - Tenant membership/role checks for every job/history route, admin membership
   management, members see only their own jobs.
@@ -61,9 +65,13 @@ escalation. Read `.env` only to check key presence without showing values.
 
 ## Next
 
-1. Final locked-image rebuild completed; 13 tests pass and final sandbox smoke
-   (including unauthenticated Docker API denial) passes. API and worker are running;
-   worker has now been recreated with the user-provided OpenAI key.
+1. Code extension has 24 passing tests and an added-tool sandbox smoke pass
+   (`021c516b-3fde-4cc8-a30d-93909d6ed194`). API/worker recreated; migration 002
+   confirmed applied. Initial job failed before inference because migrate image was
+   stale; always build migrate as well as api/worker (or use up --build).
+   Live job `4f31b776-a891-4bac-a0c3-3b9f07e14387` now running, organization
+   `feb7c5c6-e228-417c-ae5e-09131f119ce0`, output workspace/live-code-optimization-v2.json.
+   Ten tasks, max_iterations=1. Do not duplicate or restart its worker mid-run.
 2. Implementation committed as `c086b76`. Git push failed: local GitHub credential
    rejected. Connected GitHub app login is `calvinxiang`; upstream metadata reports
    push=false. `calvinxiang/auto-harness` returned 404. Publishing needs a writable
@@ -71,8 +79,9 @@ escalation. Read `.env` only to check key presence without showing values.
    was opened. Do not include `.env` or local assignment images.
 3. Live single-task baseline and full client run are complete; results, runtime and
    token usage recorded in docs/VALIDATION.md. README and PR draft updated.
-4. Remaining delivery step is publishing the branch and opening the PR once GitHub
-   access is available. No further model runs are needed for integration validation.
+4. Finish code-optimization live validation, update these notes, then publish branch
+   and PR once GitHub access is available. Do not confuse prior prompt-only scores
+   with measurements of the new editable-code implementation.
 
 Temporary `harness-dev` container was removed. No benchmark task containers remain.
 Existing

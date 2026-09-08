@@ -11,13 +11,13 @@ import pytest
 
 from service.api import app
 from service import queue
-from service.agent_source import render
+from service.agent_source import baseline_code, render
 from service.config import settings
 from service.db import connect
 from service.optimizer import propose, OptimizationError
 from service.runner import parse_results
 from service.worker import process_job
-from .test_service import setup_org, result
+from .test_service import setup_org, result, PreflightFixture
 
 
 def test_results_account_for_missing_malformed_and_timeout(tmp_path):
@@ -38,14 +38,16 @@ def test_prompt_is_data_not_worker_code():
     injection = "'\n__import__('os').system('touch /tmp/should-never-exist')\n#"
     source, sha = render(injection)
     tree = ast.parse(source)
-    assignment = next(n for n in tree.body if isinstance(n, ast.Assign) and n.targets[0].id == 'AGENT_INSTRUCTION')
+    policy = next(n for n in tree.body if isinstance(n, ast.Assign) and n.targets[0].id == 'POLICY_SOURCE')
+    policy_tree = ast.parse(ast.literal_eval(policy.value))
+    assignment = next(n for n in policy_tree.body if isinstance(n, ast.Assign) and n.targets[0].id == 'AGENT_INSTRUCTION')
     assert ast.literal_eval(assignment.value) == injection
     assert len(sha) == 64
 
 
 @pytest.mark.parametrize('body', [
-    {'diagnosis': 'x', 'rationale': 'y', 'system_prompt': 'too short'},
-    {'diagnosis': 'x', 'rationale': 'y', 'system_prompt': 'p' * 60, 'code': 'malicious'},
+    {'diagnosis': 'x', 'rationale': 'y', 'agent_code': 'too short'},
+    {'diagnosis': 'x', 'rationale': 'y', 'agent_code': 'p' * 60, 'code': 'unexpected field'},
 ])
 def test_optimizer_rejects_invalid_proposals(monkeypatch, body):
     def post(*_, **kwargs):
@@ -111,10 +113,10 @@ def test_test_client_over_real_http(tmp_path):
             time.sleep(0.1)
         else:
             pytest.fail('Client did not submit a job')
-        class Runner:
+        class Runner(PreflightFixture):
             def run(self, job, iteration, stop):
                 return result(job['request']['task_ids'], iteration['number'] + 1)
-        process_job(job, Runner(), lambda *_: {'system_prompt': 'Improved verification prompt for all terminal tasks'})
+        process_job(job, Runner(), lambda *_: {'agent_code': baseline_code() + '\n# HTTP history fixture'})
         stdout, stderr = client.communicate(timeout=20)
         assert client.returncode == 0, stderr
         summary = json.loads(stdout)

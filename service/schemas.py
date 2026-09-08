@@ -84,6 +84,9 @@ class IterationOut(BaseModel):
     attempt: int
     status: Literal['running', 'completed', 'interrupted', 'failed']
     agent_source: str
+    agent_code: str | None = None
+    source_diff: str | None = None
+    validation: dict[str, Any] | None = None
     source_sha256: str
     prompt: str
     proposal: dict[str, Any] | None
@@ -98,4 +101,4 @@ class IterationOut(BaseModel):
 class Proposal(Input):
     diagnosis: str = Field(min_length=1, max_length=4000)
     rationale: str = Field(min_length=1, max_length=4000)
-    system_prompt: str = Field(min_length=50, max_length=12000)
+    agent_code: str = Field(min_length=50, max_length=60000)
