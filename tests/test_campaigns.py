@@ -154,6 +154,21 @@ def test_cancellation_preserves_finished_trials_and_stops_children():
         assert sum(t['status'] == 'cancelled' for t in report['trials']) == 3
 
 
+def test_maintenance_repairs_crash_after_final_child_commit():
+    with TestClient(app) as client:
+        _, headers, base = setup_org(client)
+        v = version(client, headers, base)
+        experiment(client, headers, base, [v], development_task_ids=['fix-git'])
+        job = queue.claim()
+        attempt = queue.begin_iteration(job, 0, v['agent_source'], v['source_sha256'], '', None)
+        queue.complete_iteration(job, attempt, result(job['request']['task_ids'], 1))
+        queue.release_reservation(job)
+        # Simulate worker death before parent aggregation, after durable cleanup.
+        assert client.get(base + '/experiments', headers=headers).json()[0]['status'] == 'running'
+        reap_stale_runs(cleaner=lambda _: None)
+        assert client.get(base + '/experiments', headers=headers).json()[0]['status'] == 'succeeded'
+
+
 def test_heldout_waits_for_development_and_is_excluded_from_proposals():
     with TestClient(app) as client:
         _, headers, base = setup_org(client)

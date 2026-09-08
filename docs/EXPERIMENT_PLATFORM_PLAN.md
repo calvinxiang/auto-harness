@@ -4,7 +4,9 @@ Planning record, 2026-09-08. The initial gap analysis below is historical.
 Packages, queued experiments, task-level recovery and global admission are now
 implemented; the real worker/container failure drill passed. See
 [EXPERIMENT_PLATFORM.md](EXPERIMENT_PLATFORM.md) and [OPERATIONS.md](OPERATIONS.md).
-Live tools/context/skills comparisons are being recorded separately.
+The tools/context/skills comparison and all proposal outcomes are recorded in
+[PACKAGE_EXPERIMENT.md](PACKAGE_EXPERIMENT.md). The gap table below describes
+the starting point before this implementation, not the current service.
 
 The interviewer clarified that a broad harness search space and solid, scalable
 experiment infrastructure matter more than obtaining an immediate score gain.

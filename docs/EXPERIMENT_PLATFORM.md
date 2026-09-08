@@ -4,6 +4,8 @@ An experiment compares immutable harness packages through the same PostgreSQL
 queue as ordinary API jobs. It freezes candidates, model settings, tasks and
 repetitions before execution. Every candidate/task/repetition is a separate job,
 so recovery repeats only an interrupted trial. Completed results remain intact.
+The recorded baseline/tools/context/skills comparison is in
+[PACKAGE_EXPERIMENT.md](PACKAGE_EXPERIMENT.md).
 
 ## Run the complete workflow
 
@@ -174,6 +176,9 @@ Choose capacity for the engine's actual RAM/CPU: each task receives one CPU and
 2 GB RAM. The operator command refuses to lower capacity below current reservations.
 Workers share this installation's PostgreSQL pool, artifact volume and Docker engine.
 More worker processes alone do not increase sandbox concurrency beyond the pool.
+The Harbor launcher serializes shared task-cache downloads and publishes each task
+from a staging directory, preventing partial cache reads during concurrent startup
+or worker death. Inference and task execution remain concurrent.
 Legacy `service.experiments` is retained for historical reports and bypasses this
 queue; do not run it concurrently with managed work. New comparisons use the API.
 

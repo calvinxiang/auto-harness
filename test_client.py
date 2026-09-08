@@ -22,7 +22,7 @@ def load_local_env():
 def main():
     load_local_env()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--base-url', default=os.environ.get('SERVICE_URL', 'http://localhost:8080'))
+    parser.add_argument('--base-url', default=os.environ.get('SERVICE_URL', 'http://127.0.0.1:8080'))
     parser.add_argument('--org-id', default=os.environ.get('ORG_ID'))
     parser.add_argument('--token', default=os.environ.get('API_TOKEN'))
     parser.add_argument('--task-ids', nargs='+', help='Default: the full documented 10-task subset')

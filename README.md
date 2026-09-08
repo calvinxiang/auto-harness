@@ -58,7 +58,7 @@ docker compose -f compose.service.yaml up --build -d
 docker compose -f compose.service.yaml logs -f worker
 ```
 
-API: **http://localhost:8080**. Interactive docs: **http://localhost:8080/docs**.
+API: **http://127.0.0.1:8080**. Interactive docs: **http://127.0.0.1:8080/docs**.
 Database readiness: `/health`. Migrations run automatically before API and worker
 startup. PostgreSQL and the sandbox engine have no published host ports. The
 separate Compose project leaves the original `docker-compose.yml` and unrelated
@@ -115,6 +115,8 @@ held-out tasks run after development trials and cannot be supplied as proposal
 evidence through the API. See [the package and experiment API](docs/EXPERIMENT_PLATFORM.md)
 for commands, schema, profiles and limitations, and [the failure drill](docs/OPERATIONS.md)
 for measured worker recovery and capacity behavior.
+The recorded four-version comparison and exact packages are in
+[docs/PACKAGE_EXPERIMENT.md](docs/PACKAGE_EXPERIMENT.md).
 
 ## API and roles
 
@@ -215,6 +217,8 @@ cleanup completes, with a 60-second stale-worker cleanup grace. Engine failures
 retain capacity. An independent lease watchdog stops execution even if a database
 heartbeat blocks. Trials allow up to three worker attempts, then fail explicitly.
 Concurrent claims and restart recovery are tested against PostgreSQL and Docker.
+Harbor's shared task cache uses a process lock and staged publication so concurrent
+downloads and killed cache writers cannot expose incomplete new task copies.
 
 **State.** Before execution, an iteration persists its editable Python module,
 prompt, full runnable source, SHA-256, code diff and proposal. Static and sandbox
@@ -307,7 +311,7 @@ docker compose -f compose.service.yaml run --rm --no-deps -e DATABASE_URL=postgr
 ```
 
 If you changed `POSTGRES_PASSWORD`, use that password in the test URL. Tests truncate
-only this database. **57 tests pass.** They cover tenant/owner isolation, roles, idempotency, concurrent
+only this database. **58 tests pass.** They cover tenant/owner isolation, roles, idempotency, concurrent
 claims, fencing, recovery, cancellation, history/plateau behavior, regressions,
 malformed results, optimizer validation, and the actual client over live HTTP.
 
@@ -353,6 +357,14 @@ Nginx logging that passed in an earlier mini run. This is one development run,
 not an isolated model-only ablation or proof of generalization. See
 [docs/FLAGSHIP_EXPERIMENT.md](docs/FLAGSHIP_EXPERIMENT.md) and
 [docs/flagship-results.json](docs/flagship-results.json).
+
+The new durable package comparison completed **36 trials in 30m11s**, with no
+runner errors or retries. Development: baseline **6/6**, skills **6/6**, tools
+**5/6**, context **5/6**. Every version passed **3/3** designated held-out tasks.
+Actual requests confirm structured tool results, output compaction and skill
+loading, but no pass-rate improvement. Exact packages, six proposal attempts,
+per-task history and evaluation limits are in
+[docs/PACKAGE_EXPERIMENT.md](docs/PACKAGE_EXPERIMENT.md).
 
 An earlier prompt-only run scored 1/10 then 4/10, with rejection due to a regression.
 See

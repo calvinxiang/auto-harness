@@ -1,6 +1,6 @@
 # Validation record
 
-Latest platform checks: **57 PostgreSQL tests pass**, including experiment
+Latest platform checks: **58 PostgreSQL tests pass**, including experiment
 ownership/idempotency, held-out gating, immutable package recovery, capacity
 admission and cleanup failures. Real offline Docker checks load Python helpers
 and skill assets. Four worker processes under two slots passed the crash,
@@ -8,6 +8,29 @@ cancellation and sandbox-failure drill: [OPERATIONS.md](OPERATIONS.md).
 Earlier test counts below describe their historical checkpoints.
 
 Recorded 2026-09-08 on Windows Docker Desktop using Linux containers.
+
+## Package experiment and final deployment
+
+Experiment `b8786371-fef7-4617-9736-339126965685` completed 36 real task trials
+in 30m11s, with one attempt each and zero runner errors. Development scores:
+baseline 6/6, skills 6/6, tools 5/6, context 5/6. Every version passed 3/3 held-out
+tasks. Both failures were Nginx log-format verifier failures; no pass-rate gain
+or generalization claim is made. The three mechanisms were confirmed in actual
+requests/asset events. All six proposal attempts and reviewed-out versions are
+retained in [PACKAGE_EXPERIMENT.md](PACKAGE_EXPERIMENT.md) and its linked JSON.
+
+The final 58-test suite includes recovery when the final child result committed
+before parent aggregation. The real four-worker/two-slot failure drill passed
+again in 30.95s with zero leftover reservations/containers. The Harbor cache test
+reproduced an incomplete read without protection, then passed both concurrent
+readers and killed-writer recovery with locked atomic publication.
+
+The final real Harbor/local-model smoke passed with the new cache-aware launcher:
+`df853da2-3109-4aeb-b7ec-fada4f9e7ca8`. It verified added-tool dispatch and sandbox
+isolation, deliberately leaving the benchmark task unsolved. API and two worker
+images were recreated after the live experiment completed.
+The final health request returned `ok`; no queued/running jobs, task reservations
+or task containers remained.
 
 ## Flagship baseline
 

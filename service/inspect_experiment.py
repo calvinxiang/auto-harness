@@ -26,6 +26,10 @@ def inspect(experiment_id):
             requests = json.loads(path.read_text())
             trace = json.loads(path.with_name('trace.json').read_text())
             meta = json.loads(path.with_name('meta.json').read_text())
+            result = json.loads(path.parent.parent.joinpath('result.json').read_text())
+            record['dataset_task_source'] = result.get('task_id')
+            record['task_checksum'] = result.get('task_checksum')
+            record['agent_execution'] = result.get('agent_execution')
             originals = {m['tool_call_id']: str(m['content']) for m in trace if m.get('role') == 'tool'}
             compactions = {}
             for request in requests:
@@ -43,7 +47,7 @@ def inspect(experiment_id):
                     structured += isinstance(parsed, dict) and all(k in parsed for k in ('ok', 'exit_code', 'timed_out'))
                 except ValueError:
                     pass
-            record.update(model_calls=meta.get('model_calls'), input_tokens=meta.get('input_tokens'),
+            record.update(model_calls=meta.get('model_calls'), resolved_model=meta.get('resolved_model'), input_tokens=meta.get('input_tokens'),
                 output_tokens=meta.get('output_tokens'), reasoning_tokens=meta.get('reasoning_tokens'),
                 asset_events=meta.get('asset_events', []), structured_status_results=structured,
                 compacted_tool_results=list(compactions.values()),

@@ -168,7 +168,7 @@ class HarborRunner:
         root.mkdir(parents=True, exist_ok=False)
         source_path = root / 'agent.py'
         source_path.write_text(iteration['agent_source'])
-        cmd = ['/opt/harbor/bin/harbor', 'run', '-d', 'terminal-bench@2.0',
+        cmd = ['/opt/harbor/bin/python', '-m', 'service.harbor_cli', 'run', '-d', 'terminal-bench@2.0',
                '--agent-import-path', 'service.harbor_agent:SandboxHarnessAgent',
                '--model', model, '--env', 'docker', '--jobs-dir', str(root),
                '--job-name', 'benchmark', '-n', str(min(2, len(job['request']['task_ids']))), '--max-retries', '0',

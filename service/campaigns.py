@@ -121,16 +121,19 @@ def submit_experiment(conn, org_id, user, role, body, key):
 
 
 def reconcile(conn, experiment_id=None):
-    # Never called while holding a child job lock. Cancellation locks parent then
-    # children, so aggregation follows the same order and cannot invert it.
-    parents = conn.execute("SELECT id FROM experiments WHERE status='running' AND (%s::uuid IS NULL OR id=%s) FOR UPDATE",
-                           (experiment_id, experiment_id)).fetchall()
-    for parent in parents:
-        states = conn.execute('SELECT j.status FROM experiment_trials t JOIN jobs j ON j.id=t.job_id WHERE t.experiment_id=%s',
-                              (parent['id'],)).fetchall()
-        if states and all(s['status'] in ('succeeded', 'failed', 'cancelled') for s in states):
-            status = 'succeeded' if all(s['status'] == 'succeeded' for s in states) else 'failed'
-            conn.execute('UPDATE experiments SET status=%s,finished_at=now() WHERE id=%s', (status, parent['id']))
+    # Child terminal states are monotonic. Lock only ready parents, never while
+    # holding child locks; skip cancellation/other reconcilers already owning one.
+    conn.execute('''WITH ready AS (
+        SELECT e.id FROM experiments e WHERE e.status='running'
+        AND (%s::uuid IS NULL OR e.id=%s)
+        AND EXISTS (SELECT 1 FROM experiment_trials t WHERE t.experiment_id=e.id)
+        AND NOT EXISTS (SELECT 1 FROM experiment_trials t JOIN jobs j ON j.id=t.job_id
+                        WHERE t.experiment_id=e.id AND j.status IN ('queued','running'))
+        FOR UPDATE SKIP LOCKED)
+        UPDATE experiments e SET finished_at=now(), status=CASE WHEN EXISTS (
+            SELECT 1 FROM experiment_trials t JOIN jobs j ON j.id=t.job_id
+            WHERE t.experiment_id=e.id AND j.status<>'succeeded') THEN 'failed' ELSE 'succeeded' END
+        FROM ready WHERE e.id=ready.id''', (experiment_id, experiment_id))
 
 
 def experiment_report(conn, experiment):

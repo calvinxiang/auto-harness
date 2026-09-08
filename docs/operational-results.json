@@ -1,7 +1,5 @@
 {
-  "fixture": "synthetic four-second payload; real PostgreSQL, API, worker processes and Docker",
-  "docker_cpus": 24,
-  "docker_memory_bytes": 16317448192,
+  "fixture": "synthetic payload; real PostgreSQL, API, worker processes and Docker",
   "capacity": 2,
   "workers": 4,
   "lease_seconds": 6,
@@ -13,14 +11,31 @@
   "crash_left_container_and_reservation": true,
   "stale_write_fencing": "rejected",
   "status": "passed",
-  "elapsed_seconds": 33.61,
+  "elapsed_seconds": 30.95,
   "completed_trials": 9,
   "preserved_completed_trials": 6,
-  "successful_trials_per_minute": 16.07,
-  "mean_queue_wait_seconds": 14.68,
-  "mean_end_to_end_seconds": 21.06,
-  "recovered_attempts": ["interrupted", "completed"],
+  "successful_trials_per_minute": 17.45,
+  "mean_queue_wait_seconds": 13.25,
+  "mean_end_to_end_seconds": 19.27,
+  "recovered_attempts": [
+    "interrupted",
+    "completed"
+  ],
   "remaining_containers": 0,
   "remaining_reservations": 0,
-  "experiment_states": ["succeeded", "cancelled", "failed"]
+  "experiment_states": [
+    "succeeded",
+    "cancelled",
+    "failed"
+  ],
+  "docker_cpus": 24,
+  "docker_memory_bytes": 16317448192,
+  "database": "harness_ops3_test",
+  "previous_successful_run": {
+    "elapsed_seconds": 33.61,
+    "successful_trials_per_minute": 16.07,
+    "mean_queue_wait_seconds": 14.68,
+    "mean_end_to_end_seconds": 21.06,
+    "status": "passed"
+  }
 }

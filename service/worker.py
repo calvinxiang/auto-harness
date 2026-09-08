@@ -179,6 +179,7 @@ def reap_stale_runs(cleaner=cleanup):
     # Reservations outlive expired leases. Grace lets a live but disconnected
     # worker stop its runner before another worker cleans and reuses the capacity.
     with connect() as conn:
+        campaigns.reconcile(conn)  # Also repair a crash after the last child commit.
         stale = conn.execute('''SELECT r.job_id AS id,r.claim_token FROM execution_reservations r
             JOIN jobs j ON j.id=r.job_id WHERE
             ((j.status='running' AND j.lease_until<now()-make_interval(secs=>%s)) OR
