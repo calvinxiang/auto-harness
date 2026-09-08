@@ -60,6 +60,7 @@ class TaskResultOut(BaseModel):
     reward: float | None = Field(default=None, ge=0, le=1)
     failure_summary: str | None = None
     trace: str = ''
+    trace_signals: dict[str, Any] = Field(default_factory=dict)
     agent_metadata: str | None = None
     verifier_output: str = ''
 

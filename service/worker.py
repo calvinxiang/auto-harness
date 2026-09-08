@@ -84,7 +84,8 @@ def process_job(job, runner=None, optimizer=propose, shutdown=None):
         # Exceptions are categorized; raw messages may contain provider credentials.
         log.error('Job %s failed (%s)', job['id'], type(exc).__name__)
         try:
-            queue.fail(job, {'code': type(exc).__name__, 'message': 'Execution failed; inspect worker setup and persisted iteration evidence'}, iteration, getattr(exc, 'results', None))
+            queue.fail(job, {'code': type(exc).__name__, 'message': 'Execution failed; inspect worker setup and persisted iteration evidence',
+                            'details': getattr(exc, 'details', {})}, iteration, getattr(exc, 'results', None))
         except queue.LeaseLost:
             pass
     finally:

@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,6 +11,7 @@ class Settings(BaseSettings):
     openai_base_url: str = 'https://api.openai.com/v1'
     agent_model: str = 'gpt-4.1-mini'
     optimizer_model: str = 'gpt-4.1-mini'
+    optimizer_reasoning_effort: Literal['', 'none', 'low', 'medium', 'high', 'xhigh'] = ''
     sandbox_provider: str = 'docker'
     artifacts_dir: str = '/artifacts'
     lease_seconds: int = 90
@@ -27,5 +29,6 @@ def execution_config():
     cfg = settings()
     return {'dataset': 'terminal-bench@2.0', 'agent_model': cfg.agent_model,
             'optimizer_model': cfg.optimizer_model, 'sandbox_provider': cfg.sandbox_provider,
+            'optimizer_reasoning_effort': cfg.optimizer_reasoning_effort,
             'agent_timeout_seconds': 300, 'max_steps': 80, 'task_concurrency': 2,
             'harbor_version': '0.1.45', 'agent_contract': 'python-policy-v1'}

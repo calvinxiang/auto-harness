@@ -1,4 +1,5 @@
 import json
+import hashlib
 import math
 import os
 from pathlib import Path
@@ -10,6 +11,7 @@ import time
 
 from .config import settings
 from .queue import LeaseLost
+from .evidence import trace_signals
 
 
 def redact(value):
@@ -65,6 +67,7 @@ def parse_results(job_dir, task_ids):
                 status, summary = 'error', 'No valid verifier result: ' + str(error.get('exception_type', 'missing_reward'))
             by_task[task_id] = {'task_id': task_id, 'status': status, 'reward': reward,
                 'failure_summary': summary, 'trace': read_text(path.parent / 'agent/trace.json'),
+                'trace_signals': trace_signals(read_text(path.parent / 'agent/trace.json', 2000000)),
                 'agent_metadata': read_text(path.parent / 'agent/meta.json', 4000),
                 'verifier_output': verifier_output}
         except (ValueError, KeyError, TypeError):
@@ -110,13 +113,15 @@ class HarborRunner:
         root = Path(settings().artifacts_dir) / 'runs' / str(job['id']) / str(job['claim_token']) / ('preflight-' + str(iteration['number']))
         root.mkdir(parents=True, exist_ok=True)
         (root / 'agent.py').write_text(iteration['agent_source'])
+        fixture = Path(__file__).with_name('contract_fixture.py').read_bytes()
+        (root / 'contract_fixture.py').write_bytes(fixture)
         name = 'agent-preflight-' + str(iteration['id'])
         command = ['docker', 'run', '--rm', '--name', name, '--network', 'none',
                    '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
                    '--memory', '128m', '--cpus', '1', '--pids-limit', '64', '--user', '65534:65534',
                    '--tmpfs', '/tmp:rw,nosuid,size=16m', '--mount', f'type=bind,src={root},dst=/candidate,readonly',
                    'python:3.12-slim', 'timeout', '--kill-after=2s', '15s',
-                   'python', '-B', '/candidate/agent.py', '--self-test']
+                   'python', '-B', '/candidate/contract_fixture.py', '/candidate/agent.py']
         # Pulling the tiny runtime image can take longer on a first run; execution
         # itself is capped inside the container, separately from the host deadline.
         deadline = time.monotonic() + 180
@@ -133,7 +138,8 @@ class HarborRunner:
                 if process.returncode == 125:
                     raise RuntimeError('Preflight Docker infrastructure failed')
                 return {'status': 'passed' if process.returncode == 0 else 'failed',
-                        'stage': 'sandbox_contract', 'exit_code': process.returncode, 'log': log}
+                        'stage': 'sandbox_contract', 'exit_code': process.returncode, 'log': log,
+                        'fixture_sha256': hashlib.sha256(fixture).hexdigest()}
             finally:
                 if process.poll() is None:
                     process.kill()

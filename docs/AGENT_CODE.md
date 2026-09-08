@@ -46,6 +46,12 @@ An interrupted benchmark retries the exact saved runnable snapshot, including it
 runtime, instead of silently rebuilding it from newer local files. Historical
 prompt-only records remain readable; their new code/validation fields are null.
 
+The offline driver is `service/contract_fixture.py`. It simulates a bash command,
+then text completion or the explicit `finish` tool convention. Its hash is saved
+with validation results, separately from the scored agent source. A genuinely new
+interaction protocol may require additional fixture support; the smoke check does
+not simulate arbitrary agent behavior.
+
 ## Generalization and limits
 
 The optimizer is instructed to fix general behavior and avoid task-specific answers,
@@ -55,7 +61,8 @@ Python in a task container can access that container; a malicious agent could by
 in-process conventions. The external watchdog and container resources are separate
 controls. Production hostile-code hosting requires stronger VM/egress boundaries.
 
-The current subset is a development set used for both feedback and comparison.
-Repeated trials and a separate evaluation set are needed before claiming gains on
-unseen tasks. More tools alone do not guarantee better results: each proposed change
-must be evaluated, and rejected versions stay in history.
+The API subset is a development set used for both feedback and comparison.
+The operator workflow in [EXPERIMENTS.md](EXPERIMENTS.md) adds repeated trials and
+a separate evaluation set while retaining frozen source versions. More tools alone
+do not guarantee better results: each proposed change must be evaluated, and
+rejected versions stay in history.
