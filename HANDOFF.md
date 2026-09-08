@@ -1,5 +1,33 @@
 # Agent optimization service handoff
 
+## Final state (2026-09-08)
+
+The implementation and requested controlled experiment are complete. All five
+milestones have implementation paths and coverage. **32 PostgreSQL tests pass**;
+positive and negative offline sandbox checks passed. Updated API/worker images are
+running, `/health` is ok, there are no active API jobs and no remaining task containers.
+
+Experiment `bb881cf2-6f45-4ff3-9149-1031c0e2274f` completed all 46 task executions
+in 46m27s. Development baseline: 2/20; candidate: 4/20. Held-out baseline: 1/3;
+candidate: 0/3. Both development pairs had regressions. One candidate destroyed its
+task filesystem; its raw missing-reward error is preserved and explicitly assessed
+as zero, without retry. The other 45 executions have verifier results. Do not
+recommend this candidate as an improved agent or tune using the held-out results.
+No existing API job history or best pointer was changed.
+
+Read docs/EXPERIMENT_RESULTS.md and docs/code-experiment-results.json for the
+complete protocol, review history, source, hashes, per-task outcomes, usage and limits.
+The experiment used a GPT-5.4 optimizer, while both benchmark agents used 4.1-mini.
+The ordinary API defaults remain 4.1-mini for both roles; `.env` was not changed.
+Implementation checkpoint: `7044317`. Current uncommitted work is final documentation.
+
+The user explicitly requested opening a PR after evaluation so the interviewer can
+review it. GitHub device sign-in succeeded as `calvinxiang`; fork
+`calvinxiang/auto-harness` is ready. Upstream push permission is false. Final
+publication is in progress using workspace/github_submission.py; no further user
+authorization is required. Do not print credentials. Earlier status notes below
+are a historical work log, superseded by this section.
+
 ## Objective and reference
 
 Complete all five take-home milestones today: HTTP API, durable asynchronous
@@ -32,7 +60,7 @@ and PR. Assignment images: `Question page 1.png`, `Question page 2.png`.
 - Service implemented in `service/`, Compose in `compose.service.yaml`, client in
   `test_client.py`, docs in README and `docs/VALIDATION.md`.
 - API running at http://localhost:8080 (docs at /docs), database migrations applied.
-- 24 PostgreSQL tests pass, including the actual client over real HTTP with fixtures.
+- 32 PostgreSQL tests pass, including the actual client over real HTTP with fixtures.
 - Real Harbor/Docker installed-agent smoke passed with local model fixture, and
   live OpenAI baseline/optimization completed. All 10 selected task IDs validated.
 - E2B is saved for future use; the service currently implements Docker only.
@@ -63,7 +91,83 @@ Git requires `git -c safe.directory=C:/Users/Calvin/dev/auto-harness ...` becaus
 the tool sandbox user differs from the repository owner. Git writes require
 escalation. Read `.env` only to check key presence without showing values.
 
-## Next
+## Historical work log: controlled code experiment
+
+User authorized generating an evidence-backed proposal, reviewing it, comparing
+frozen versions repeatedly and using held-out tasks. This is now running as an
+operator experiment, separate from API jobs and promotion decisions.
+
+- Experiment: `bb881cf2-6f45-4ff3-9149-1031c0e2274f`.
+- Private report: `/artifacts/experiments/<id>/report.json`; execution artifacts
+  under that experiment's `execution/` directory, outside the queue reaper's sweep.
+- Source baseline: best iteration of job `4f31b776-a891-4bac-a0c3-3b9f07e14387`.
+- Optimizer for this proposal: `gpt-5.4-2026-03-05`, medium reasoning. Benchmark
+  agent remains `gpt-4.1-mini`; both versions keep the original runtime and limits.
+  `.env` still uses the cheaper optimizer default; experiment overrides are explicit.
+- Generated change: explicit `finish` tool citing a successful command in actual
+  history. General mechanism, no task-specific solutions. Write detection and
+  command matching are heuristics; a successful command does not prove correctness.
+- Review probes passed: accepts silent shell checks and Python assertions;
+  rejects tested stale, failed and absent checks. Sandbox contract passed.
+- Prior GPT-5.4 proposal `0ade3a03-d692-471b-8ef0-ac50019175ff` rejected during
+  review because its command whitelist rejected valid silent checks. Revision
+  `1bb0c3ba-75d0-4719-a050-27932a5a549c` failed response validation before execution;
+  exact cause/usage were unavailable. Current retry allows more output and saves
+  safe failure diagnostics. Earlier 4.1-mini proposal `54225391-049e-4381-bd1f-f05c26557632`
+  repeated the unsupported empty-response idea and was not benchmarked.
+- Frozen plan: two development repetitions per version, alternating order,
+  followed by one pair on `cancel-async-tasks`, `openssl-selfsigned-cert`, and
+  `large-scale-text-editing`: 46 task executions total. Held-out tasks were chosen
+  from metadata before any results. Do not tune using their outputs.
+- Started evaluation at 21:08:22 UTC on September 8. Development repetitions:
+  baseline 1/10 and 1/10; candidate 1/10 and 3/10, including the explicit zero-score
+  assessment below. Aggregate baseline 2/20, candidate 4/20. Held-out baseline
+  finished at 1/3. The final held-out candidate run is active as of 21:49 UTC.
+  The historical baseline was 4/10; do not mix it into the fresh repetitions.
+  Resume/checkpoint command (only after the current process ends):
+
+```sh
+docker compose -f compose.service.yaml run --rm --no-deps worker python -m service.experiments evaluate --experiment-id bb881cf2-6f45-4ff3-9149-1031c0e2274f --repetitions 2 --review-reason "Reviewed completion verification; preserve frozen comparison"
+```
+
+Do not launch a duplicate while it is running. Record all scores, per-task
+regressions, timings and usage in docs after completion; do not claim a reliable
+gain from a favorable single trial. No API history or best pointer is changed.
+Uncommitted changes add evidence counts, reasoning settings, the experiment tool,
+safe provider diagnostics, and an offline contract driver supporting a finish tool.
+The driver is separate from scored runtime, with its own persisted source hash.
+32 tests and both positive/three negative real sandbox contract checks passed.
+First candidate had an agent-caused verifier error on `configure-git-webserver`:
+an unquoted heredoc expanded a cleanup variable to empty, deleting the task's
+filesystem. Trace evidence is clear; do not retry this away. Added an explicit
+`assess-agent-failure` command which preserves `original_results`, assigns zero,
+marks the run `assessed`, and lets resume skip it. The assessment is recorded and
+the experiment resumed without rerunning this task. Assessed run ID:
+`79e7d6aa-8f52-4dca-bbe9-dbf9d2ff8ffe`. All current images include this command.
+See docs/EXPERIMENT_RESULTS.md and the tool's help. Keep the candidate frozen.
+Implementation committed as `7044317`; final result/documentation edits remain.
+New images are built; API/worker production containers still use the prior image.
+After evaluation, export the trace-free public report using ignored
+`workspace/export_experiment.py` (copy to the worker and run there), copy
+`public-results.json` to `docs/code-experiment-results.json`, and finish docs/results.
+Then recreate API/worker, verify health, scan staged changes and commit.
+
+## Publication setup notes
+
+The user explicitly asked to open the PR after this run so the interviewer can
+review it. Git Credential Manager device sign-in succeeded as `calvinxiang`.
+Upstream still has push=false, so the writable fork `calvinxiang/auto-harness` has
+been prepared. Do not request authorization again. Do not expose stored credentials.
+
+Ignored `workspace/github_submission.py` supports `status`, `prepare`, `create-pr`.
+It reads credentials into memory via GCM, uses only GitHub's API, checks the pushed
+branch matches local HEAD, and reads the exact title/body from docs/PR_DRAFT.md.
+Run under escalation so Windows Credential Manager is available. After final
+commit, push `feat/agent-optimization-service` to the fork (add a submission remote
+or use its public HTTPS URL), then run `create-pr`. No PR is open yet.
+The earlier access blocker documented below is historical and now resolved via fork.
+
+## Prior checks and delivery
 
 1. Code extension has 24 passing tests and an added-tool sandbox smoke pass
    (`021c516b-3fde-4cc8-a30d-93909d6ed194`). API/worker recreated; migration 002
@@ -86,11 +190,11 @@ escalation. Read `.env` only to check key presence without showing values.
    was opened. Do not include `.env` or local assignment images.
 3. Live single-task baseline and full client run are complete; results, runtime and
    token usage recorded in docs/VALIDATION.md. README and PR draft updated.
-4. Code-optimization live validation is complete. Remaining delivery step: publish
-   branch and PR once GitHub access is available. Do not confuse prior prompt-only
-   scores with measurements of the new editable-code implementation.
+4. The first code-optimization live job is complete. Finish the controlled experiment
+   above and publish the branch/PR once GitHub access is available. Do not confuse
+   prior prompt-only scores with the editable-code implementation.
 
-Temporary `harness-dev` container was removed. No benchmark task containers remain.
+Temporary `harness-dev` container was removed. Experiment task containers are active.
 Existing Supabase containers remain untouched. Original README: docs/UPSTREAM_README.md.
 
 Useful checks:

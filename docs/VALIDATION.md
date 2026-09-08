@@ -2,15 +2,40 @@
 
 Recorded 2026-09-08 on Windows Docker Desktop using Linux containers.
 
+## Repeated and held-out code experiment
+
+Experiment `bb881cf2-6f45-4ff3-9149-1031c0e2274f` completed 46 task executions in
+46m27s. A reviewed GPT-5.4 proposal added a finish tool; both scored agents retained
+`gpt-4.1-mini` and the same runtime, dataset and limits. Fresh development baseline
+scores were 1/10 and 1/10; candidate scores were 1/10 and 3/10. Held-out baseline
+passed 1/3, candidate 0/3. Each development pair contained a task regression.
+
+One candidate destroyed its own task filesystem through an unquoted heredoc.
+The resulting missing verifier reward is preserved and explicitly assessed as a
+zero-score agent failure, without retrying it. The other 45 executions produced
+verifier results. The candidate is not recommended for promotion, and no API
+job's history or best pointer was changed by the operator experiment.
+
+See [EXPERIMENT_RESULTS.md](EXPERIMENT_RESULTS.md) for the review process,
+per-task outcomes, timings, usage and limitations, and
+[code-experiment-results.json](code-experiment-results.json) for the actual code
+and structured record. The updated API/worker are running, `/health` returns ok,
+the API queue has no active jobs, and no task containers remain.
+
 ## Python code optimization extension
 
 The optimizer now changes the complete agent policy module: tool definitions,
 dispatch, context handling, helper functions, prompt and the agent loop. The
 runtime/model configuration and benchmark remain service-controlled.
 
-- 24 PostgreSQL tests pass, including preservation of invalid code proposals and
+- 32 PostgreSQL tests pass, including preservation of invalid code proposals and
   the best version, source diffs, validation results, tool-message pairing, static
   checks that never execute proposed code, and independent trace preservation.
+  Additional checks cover trace observations, fixed comparison settings, alternating
+  repetitions, evaluation resume, held-out feedback exclusion, reasoning parameters
+  and safe diagnostics for truncated optimizer responses.
+  Explicit agent-failure assessments retain raw errors, never award a pass,
+  require a stopped experiment and do not rerun resolved task attempts.
 - Offline preflight and a real Harbor task successfully executed a code change
   adding a tool and dispatch branch. Run ID:
   `021c516b-3fde-4cc8-a30d-93909d6ed194`. This used a local HTTP model fixture,
@@ -18,6 +43,9 @@ runtime/model configuration and benchmark remain service-controlled.
 - Real offline containers rejected import-time failure and broken tool history
   (exit 1), and terminated an infinite loop (exit 124) under the 15-second timeout.
   Reproduce with `docker compose -f compose.service.yaml run --rm --no-deps worker python -m tests.sandbox_validation`.
+  The current driver also accepts both text completion and an explicit finish tool;
+  both completion protocols and all three rejection cases passed again after the
+  driver was separated from the scored runtime.
 - Live job `4f31b776-a891-4bac-a0c3-3b9f07e14387` completed a 10-task baseline and
   one automatically proposed code candidate using `gpt-4.1-mini` for both roles.
   It ran from 20:20:54 to 20:38:06 UTC, **17m12s** end-to-end. Both iterations passed
@@ -160,5 +188,5 @@ python test_client.py --task-ids fix-git --max-iterations 0
 python test_client.py
 ```
 
-The API remains available on localhost:8080. Publishing the branch and opening a PR
-still require writable GitHub access and working authentication; no PR is open yet.
+The API remains available on localhost:8080. GitHub authentication is configured;
+the submission uses a fork because the account lacks direct upstream push access.
