@@ -15,13 +15,26 @@ and PR. Assignment images: `Question page 1.png`, `Question page 2.png`.
 - Docker Desktop is running Linux containers. Existing Supabase containers belong
   to another project; leave them alone.
 - E2B credential saved in ignored `.env`. Never print or commit credential values.
-- LLM provider/key clarification is pending; real inference cannot run until set.
+- OpenAI key supplied by user and saved in ignored `.env`; worker recreated.
+- Live single-task baseline completed: job `4b0a2329-8f05-495d-ace8-07e4d9a272ab`,
+  organization `036172db-b1cd-43d9-b81e-8b248a97b850`. Client output goes to
+  ignored `workspace/live-baseline.json`; local client credentials in the matching
+  `workspace/client-<org-id>.json`. Never print these credentials.
+- Single task: service succeeded, task failed (reward 0); agent resolved one Git
+  conflict incorrectly. Actual model usage: 13,835 input / 536 output tokens.
+- Full 10-task optimization job completed: `efbafbbc-8ceb-4607-9cf6-d75bb29cdd73`, org
+  `bae13d3c-d367-46ca-baf9-3f7b61e1f7c6`, output `workspace/live-optimization.json`.
+  Duration 16m47s; baseline 1/10, candidate 4/10. Both used gpt-4.1-mini and had zero
+  runner errors. Candidate rejected because nginx-request-logging regressed, so
+  best_score remains 0.1 and stop_reason is no_improvement. One automatic proposal
+  strengthened command-exit-status checks/error recovery. No manual prompt edits.
+  Full results retrieved through client; sanitized summary: docs/live-results.json.
 - Service implemented in `service/`, Compose in `compose.service.yaml`, client in
   `test_client.py`, docs in README and `docs/VALIDATION.md`.
 - API running at http://localhost:8080 (docs at /docs), database migrations applied.
 - 13 PostgreSQL tests pass, including the actual client over real HTTP with fixtures.
-- Real Harbor/Docker installed-agent smoke passed with local model fixture; no live
-  LLM performance measurement yet. All 10 selected task IDs validated.
+- Real Harbor/Docker installed-agent smoke passed with local model fixture, and
+  live OpenAI baseline/optimization completed. All 10 selected task IDs validated.
 - E2B is saved for future use; the service currently implements Docker only.
 
 ## Implementation direction
@@ -50,17 +63,19 @@ escalation. Read `.env` only to check key presence without showing values.
 
 1. Final locked-image rebuild completed; 13 tests pass and final sandbox smoke
    (including unauthenticated Docker API denial) passes. API and worker are running;
-   worker is waiting without claiming jobs because OPENAI_API_KEY is absent.
+   worker has now been recreated with the user-provided OpenAI key.
 2. Implementation committed as `c086b76`. Git push failed: local GitHub credential
    rejected. Connected GitHub app login is `calvinxiang`; upstream metadata reports
    push=false. `calvinxiang/auto-harness` returned 404. Publishing needs a writable
    fork/access and usable authentication. Exact PR draft is docs/PR_DRAFT.md. No PR
    was opened. Do not include `.env` or local assignment images.
-3. Await user LLM key/provider. Add key directly in `.env`, recreate API/worker,
-   run `python test_client.py --task-ids fix-git --max-iterations 0`, then full client.
-4. Record measured outcomes/runtime in docs/VALIDATION.md and update PR.
+3. Live single-task baseline and full client run are complete; results, runtime and
+   token usage recorded in docs/VALIDATION.md. README and PR draft updated.
+4. Remaining delivery step is publishing the branch and opening the PR once GitHub
+   access is available. No further model runs are needed for integration validation.
 
-Temporary `harness-dev` container is being removed after validation. Existing
+Temporary `harness-dev` container was removed. No benchmark task containers remain.
+Existing
 Supabase containers remain untouched. Original README: docs/UPSTREAM_README.md.
 
 Useful checks:

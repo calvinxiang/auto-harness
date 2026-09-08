@@ -24,7 +24,12 @@ verifying runtime execution, trace capture, verifier integration and denial of D
 API access without client certificates. The smoke uses a local model fixture and
 deliberately leaves the task unsolved.
 
-Keep this PR in draft until live LLM validation is recorded. No provider key was
-available for a real baseline/optimization run; no measured score improvement or
-full-subset runtime is claimed. E2B integration, unrestricted code optimization,
+Live `gpt-4.1-mini` validation completed the 10-task baseline and one automatically
+proposed prompt candidate in 16m47s, with zero runner errors. Baseline passed 1/10;
+candidate passed 4/10 but regressed on the previously passing Nginx task. The
+regression policy correctly rejected the candidate, retained baseline score 0.1
+and stopped. Full source/history were retrieved through the client. Measurements,
+usage and limitations are recorded in docs/VALIDATION.md and docs/live-results.json.
+
+E2B integration, unrestricted code optimization,
 held-out evaluation and production-grade VM isolation are outside this implementation.

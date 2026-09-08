@@ -139,7 +139,8 @@ and long scientific builds. Runs use two concurrent tasks, 1 CPU and 2 GB RAM pe
 task, 80 agent steps, 120 seconds per bash command and a **300-second agent budget**.
 An iteration has a one-hour outer deadline including downloads/setup/verification.
 Ten tasks have about 25 minutes of maximum agent execution at concurrency two,
-plus overhead: this is a budget estimate, **not measured full-subset runtime**.
+plus overhead. The measured live run took **9m13s for the baseline and 7m27s for
+the candidate**, or 16m47s end-to-end including the optimizer call.
 
 The original task budgets are 900 seconds. Shorter service budgets and resource
 overrides make this a local optimization experiment, not a leaderboard submission.
@@ -238,17 +239,23 @@ This launches the real `fix-git` task, installed runtime and Harbor verifier. A 
 HTTP fixture supplies a harmless bash command that checks isolation and prints a
 marker. The verifier rejects the deliberately unsolved task. It verifies integration,
 **not LLM performance**. No fixture mode is exposed in the production API/worker.
-See [docs/VALIDATION.md](docs/VALIDATION.md) for observed results and remaining checks.
+Live OpenAI validation also completed the full 10-task subset and an automatic
+optimization step. The baseline passed 1/10; the candidate passed 4/10 but regressed
+on the previously passing Nginx task, so it was rejected and the baseline retained.
+Both iterations completed without runner errors. See
+[docs/VALIDATION.md](docs/VALIDATION.md) for outcomes, timing, usage and limitations,
+and [docs/live-results.json](docs/live-results.json) for structured measurements.
 
 ## Scope, omissions and more time
 
 All five milestones have implementation paths and automated coverage. The service
 optimizes prompts rather than unrestricted agent code, supports one sandbox backend
 and one OpenAI-compatible inference interface, and uses operator token provisioning
-rather than SSO. Full live LLM validation depends on provider credentials; see the
-validation record. E2B is a natural future backend, but is not claimed as tested.
+rather than SSO. Live LLM validation exercised the full loop, including rejection
+of a candidate with higher aggregate score but a task regression. E2B is a natural
+future backend, but is not claimed as tested.
 
-With more time: held-out/repeated evaluations, measured subset runtime, spend
+With more time: held-out/repeated evaluations, statistical acceptance criteria, spend
 accounting/budgets, fair organization scheduling, per-task checkpoints, transient
 provider retry policy, artifact retention/object storage, connection pooling,
 token rotation/expiry and audit events, egress controls and VM-backed sandboxes.
