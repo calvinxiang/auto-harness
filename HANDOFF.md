@@ -51,14 +51,17 @@ escalation. Read `.env` only to check key presence without showing values.
 1. Final locked-image rebuild completed; 13 tests pass and final sandbox smoke
    (including unauthenticated Docker API denial) passes. API and worker are running;
    worker is waiting without claiming jobs because OPENAI_API_KEY is absent.
-2. Commit implementation and open draft PR. Do not include `.env` or
-   local assignment images. Original README preserved at docs/UPSTREAM_README.md.
+2. Implementation committed as `c086b76`. Git push failed: local GitHub credential
+   rejected. Connected GitHub app login is `calvinxiang`; upstream metadata reports
+   push=false. `calvinxiang/auto-harness` returned 404. Publishing needs a writable
+   fork/access and usable authentication. Exact PR draft is docs/PR_DRAFT.md. No PR
+   was opened. Do not include `.env` or local assignment images.
 3. Await user LLM key/provider. Add key directly in `.env`, recreate API/worker,
    run `python test_client.py --task-ids fix-git --max-iterations 0`, then full client.
 4. Record measured outcomes/runtime in docs/VALIDATION.md and update PR.
 
-Temporary `harness-dev` container has read-only source mount and shared artifacts;
-remove it when finished. Existing Supabase containers remain untouched.
+Temporary `harness-dev` container is being removed after validation. Existing
+Supabase containers remain untouched. Original README: docs/UPSTREAM_README.md.
 
 Useful checks:
 
