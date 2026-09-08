@@ -1,0 +1,98 @@
+name: agent-optimization
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: harness
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-development-only}
+      POSTGRES_DB: harness
+    volumes:
+      - database:/var/lib/postgresql/data
+    networks: [backend]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U harness -d harness"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  migrate:
+    build:
+      context: .
+      dockerfile: service/Dockerfile
+      target: api
+    environment: &database-env
+      DATABASE_URL: postgresql://harness:${POSTGRES_PASSWORD:-local-development-only}@db:5432/harness
+    command: [python, -m, service.migrate]
+    networks: [backend]
+    depends_on:
+      db: {condition: service_healthy}
+  api:
+    build:
+      context: .
+      dockerfile: service/Dockerfile
+      target: api
+    environment:
+      <<: *database-env
+      BOOTSTRAP_TOKEN: ${BOOTSTRAP_TOKEN:?Set BOOTSTRAP_TOKEN in .env}
+      AGENT_MODEL: ${AGENT_MODEL:-gpt-4.1-mini}
+      OPTIMIZER_MODEL: ${OPTIMIZER_MODEL:-gpt-4.1-mini}
+      SANDBOX_PROVIDER: ${SANDBOX_PROVIDER:-docker}
+    ports: ["127.0.0.1:8080:8000"]
+    networks: [backend, frontend]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    restart: unless-stopped
+  sandbox-engine:
+    image: docker:27-dind
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: /certs
+      DOCKER_TLS_SAN: DNS:sandbox-engine
+    command: ["--storage-driver=overlay2", "--default-address-pool=base=10.240.0.0/16,size=24"]
+    volumes:
+      - sandbox-images:/var/lib/docker
+      - artifacts:/artifacts
+      - sandbox-certificates:/certs/client
+    networks: [execution]
+    healthcheck:
+      test: [CMD, docker, info]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+    restart: unless-stopped
+  worker:
+    stop_grace_period: 90s
+    build:
+      context: .
+      dockerfile: service/Dockerfile
+      target: worker
+    environment:
+      <<: *database-env
+      DOCKER_HOST: tcp://sandbox-engine:2376
+      DOCKER_TLS_VERIFY: "1"
+      DOCKER_CERT_PATH: /certs/client
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      AGENT_MODEL: ${AGENT_MODEL:-gpt-4.1-mini}
+      OPTIMIZER_MODEL: ${OPTIMIZER_MODEL:-gpt-4.1-mini}
+      E2B_API_KEY: ${E2B_API_KEY:-}
+      SANDBOX_PROVIDER: ${SANDBOX_PROVIDER:-docker}
+    volumes:
+      - artifacts:/artifacts
+      - benchmark-cache:/root/.cache/harbor
+      - sandbox-certificates:/certs/client:ro
+    networks: [backend, execution]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      sandbox-engine: {condition: service_healthy}
+    restart: unless-stopped
+networks:
+  backend:
+    internal: true
+  execution: {}
+  frontend: {}
+volumes:
+  database: {}
+  artifacts: {}
+  sandbox-images: {}
+  benchmark-cache: {}
+  sandbox-certificates: {}
