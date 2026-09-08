@@ -29,12 +29,14 @@ dispatch using a local model fixture, deliberately leaving the task unsolved.
 Separate offline containers reject crashing code, invalid tool history and an
 infinite loop within the configured timeout.
 
-Earlier prompt-only `gpt-4.1-mini` validation completed the 10-task baseline and one automatically
-proposed prompt candidate in 16m47s, with zero runner errors. Baseline passed 1/10;
-candidate passed 4/10 but regressed on the previously passing Nginx task. The
-regression policy correctly rejected the candidate, retained baseline score 0.1
-and stopped. Full source/history were retrieved through the client. Measurements,
-usage and limitations are recorded in docs/VALIDATION.md and docs/live-results.json.
+Live `gpt-4.1-mini` code optimization ran a 10-task baseline and an automatically
+proposed Python change in 17m12s with zero runner errors. Baseline passed 4/10;
+candidate passed 1/10, was rejected, and baseline score 0.4 was retained. Full
+code/diff/validation/history were retrieved through the client. The proposed
+empty-response diagnosis was unsupported by baseline traces; the service now gives
+future optimizer calls runtime metadata and passing-task context. That follow-up
+is tested but has no new live benchmark result. Measurements, actual source and
+limitations are recorded in docs/VALIDATION.md and docs/live-code-results.json.
 
 E2B integration, optimization of service/runtime infrastructure,
 held-out evaluation and production-grade VM isolation are outside this implementation.

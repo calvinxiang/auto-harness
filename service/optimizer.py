@@ -16,10 +16,13 @@ def propose(best, history):
         if task['status'] != 'passed':
             failures.append({'task_id': task['task_id'], 'status': task['status'],
                              'failure_summary': task['failure_summary'],
+                             'agent_metadata': task.get('agent_metadata'),
                              'trace': task.get('trace', '')[-12000:]})
     context = {
         'current_agent_code': best.get('agent_code') or baseline_code(best['prompt']),
         'failure_evidence': failures,
+        'previously_passing_tasks': [task['task_id'] for task in best['results']['tasks']
+                                    if task['status'] == 'passed'],
         'prior_iterations': [{'number': r['number'], 'score': r['score'],
                               'accepted': r['accepted'],
                               'diagnosis': (r['proposal'] or {}).get('diagnosis'),
@@ -48,7 +51,12 @@ def propose(best, history):
             'task-specific answers, benchmark/verifier paths, oracle solutions, test tampering '
             'or credential access. Tools must work across unseen tasks. Do not alter the model, '
             'evaluation, time/resource budgets or infrastructure. Only this module is editable. '
-            'Explain the observed failure pattern and why the code change addresses it.')},
+            'Ground the diagnosis in concrete recorded commands/results and runtime metadata '
+            '(model calls, tokens, stop reason). Do not invent empty responses, timeouts or '
+            'protocol errors. Do not optimize a hypothetical rare edge case unless the trace '
+            'shows it occurred. Prefer a recurring mechanism supported by multiple failures '
+            'and preserve behavior on previously passing tasks. Explain the actual evidence '
+            'and why the code change addresses it; explicitly acknowledge uncertainty.')},
         {'role': 'user', 'content': json.dumps(context)},
     ]
     try:

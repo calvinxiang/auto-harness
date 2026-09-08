@@ -139,8 +139,9 @@ and long scientific builds. Runs use two concurrent tasks, 1 CPU and 2 GB RAM pe
 task, 80 agent steps, 120 seconds per bash command and a **300-second agent budget**.
 An iteration has a one-hour outer deadline including downloads/setup/verification.
 Ten tasks have about 25 minutes of maximum agent execution at concurrency two,
-plus overhead. The measured live run took **9m13s for the baseline and 7m27s for
-the candidate**, or 16m47s end-to-end including the optimizer call.
+plus overhead. Observed full-subset iterations took **7m27s to 9m13s** in the
+recorded local runs. The latest baseline, code proposal and rerun took **17m12s**
+end-to-end. These measurements are machine/model dependent.
 
 The original task budgets are 900 seconds. Shorter service budgets and resource
 overrides make this a local optimization experiment, not a leaderboard submission.
@@ -263,22 +264,26 @@ execute a harmless command that checks isolation and prints a marker. The verifi
 rejects the deliberately unsolved task. The second checks that offline preflight
 rejects crashing code, broken tool history and an infinite loop. These verify integration,
 **not LLM performance**. No fixture mode is exposed in the production API/worker.
-The earlier prompt-only implementation completed live OpenAI validation on the
-full 10-task subset and an automatic optimization step. The baseline passed 1/10;
-the candidate passed 4/10 but regressed
-on the previously passing Nginx task, so it was rejected and the baseline retained.
-Both iterations completed without runner errors. See
+Live code optimization completed the full 10-task subset and an automatic Python
+change: baseline **4/10**, candidate **1/10**, candidate rejected, baseline retained.
+Both iterations completed without runner errors in 17m12s. The proposal targeted
+empty responses, but none occurred in the baseline; its diagnosis was unsupported.
+The service now includes runtime metadata and passing-task context in future
+optimizer requests. That follow-up has test coverage but no new benchmark result.
+
+An earlier prompt-only run scored 1/10 then 4/10, with rejection due to a regression.
+See
 [docs/VALIDATION.md](docs/VALIDATION.md) for outcomes, timing, usage and limitations,
-and [docs/live-results.json](docs/live-results.json) for structured measurements.
+and [docs/live-code-results.json](docs/live-code-results.json) for the code and
+structured measurements. Historical prompt-only data is in docs/live-results.json.
 
 ## Scope, omissions and more time
 
 All five milestones have implementation paths and automated coverage. The service
 optimizes a Python agent module while keeping its runtime/benchmark infrastructure
-fixed, supports one sandbox backend
-and one OpenAI-compatible inference interface, and uses operator token provisioning
-rather than SSO. The initial live LLM validation exercised the full loop, including rejection
-of a candidate with higher aggregate score but a task regression. E2B is a natural
+fixed, supports one sandbox backend and one OpenAI-compatible inference interface,
+and uses operator token provisioning rather than SSO. Live LLM validation exercised
+the full loop with code changes and rejection of an unsuccessful candidate. E2B is a natural
 future backend, but is not claimed as tested.
 
 With more time: held-out/repeated evaluations, statistical acceptance criteria, spend

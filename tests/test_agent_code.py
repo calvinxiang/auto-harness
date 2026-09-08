@@ -70,11 +70,15 @@ def test_optimizer_receives_code_and_returns_tool_change(monkeypatch):
         context = json.loads(kwargs['json']['messages'][1]['content'])
         assert context['current_agent_code'] == code
         assert context['failure_evidence'][0]['failure_summary'] == 'Repeated commands'
+        assert context['failure_evidence'][0]['agent_metadata'] == '{"model_calls":80,"stop_reason":"max_steps"}'
+        assert context['previously_passing_tasks'] == ['fix-git']
         return httpx.Response(200, json={'choices': [{'message': {'content': json.dumps({
             'diagnosis': 'Repeated commands', 'rationale': 'Explain intended effect', 'agent_code': candidate})}}]})
     monkeypatch.setattr(httpx.Client, 'post', post)
     proposal = propose({'prompt': 'baseline', 'agent_code': code, 'results': {'tasks': [{
-        'task_id': 'regex-log', 'status': 'failed', 'failure_summary': 'Repeated commands', 'trace': 'observed trace'}]}}, [])
+        'task_id': 'regex-log', 'status': 'failed', 'failure_summary': 'Repeated commands',
+        'agent_metadata': '{"model_calls":80,"stop_reason":"max_steps"}', 'trace': 'observed trace'},
+        {'task_id': 'fix-git', 'status': 'passed'}]}}, [])
     assert proposal['agent_code'] == candidate
 
 

@@ -18,12 +18,54 @@ runtime/model configuration and benchmark remain service-controlled.
 - Real offline containers rejected import-time failure and broken tool history
   (exit 1), and terminated an infinite loop (exit 124) under the 15-second timeout.
   Reproduce with `docker compose -f compose.service.yaml run --rm --no-deps worker python -m tests.sandbox_validation`.
-- A live 10-task baseline plus one code proposal is running as job
-  `4f31b776-a891-4bac-a0c3-3b9f07e14387`. Record measured results after completion.
+- Live job `4f31b776-a891-4bac-a0c3-3b9f07e14387` completed a 10-task baseline and
+  one automatically proposed code candidate using `gpt-4.1-mini` for both roles.
+  It ran from 20:20:54 to 20:38:06 UTC, **17m12s** end-to-end. Both iterations passed
+  static/offline validation and completed with zero runner errors. Source, code
+  diff, validation and full history were retrieved through `test_client.py`.
+- Baseline: **4/10**, 8m28s. Candidate: **1/10**, 8m31s. The candidate was rejected,
+  retaining best score **0.4** with stop reason `no_improvement`.
 - An initial deployment attempt (`3734951a-e9b5-470f-a36e-6ae135b5fea6`) stopped
   before inference because the separate migration image was stale. Rebuilt all
   images and confirmed migrations 001 and 002 before resubmitting. This is not a
   benchmark result.
+
+| Task | Baseline | Code candidate |
+|---|---|---|
+| fix-git | Passed | Failed |
+| regex-log | Failed | Failed |
+| git-leak-recovery | Passed | Failed |
+| log-summary-date-ranges | Passed | Passed |
+| build-cython-ext | Failed | Failed |
+| configure-git-webserver | Failed | Failed |
+| fix-code-vulnerability | Failed | Failed |
+| extract-elf | Failed | Failed |
+| nginx-request-logging | Passed | Failed |
+| sqlite-db-truncate | Failed | Failed |
+
+The generated code retries empty no-tool-call responses instead of returning
+immediately. Inspection of all baseline traces found 352 assistant messages and
+**zero instances of that condition**. The diagnosis was therefore unsupported by
+the recorded baseline. The score decrease cannot establish that this change caused
+the regressions; single-run model sampling and environment variation remain factors.
+This validates code proposal/application/evaluation and rejection, not successful
+agent improvement or generalization.
+
+| Usage | Input tokens | Output tokens |
+|---|---:|---:|
+| Baseline agent calls | 4,725,022 | 25,334 |
+| Candidate agent calls | 2,316,869 | 20,937 |
+| Optimizer proposal | 26,966 | 812 |
+
+See [live-code-results.json](live-code-results.json) for both Python modules, the
+actual diff, validation, model settings, per-task results, source hashes and usage.
+The full local client output is ignored `workspace/live-code-optimization-v2.json`.
+No benchmark/preflight containers remained after completion.
+
+A follow-up adds runtime metadata (calls, tokens, stop reason) and passing-task
+context to optimizer input, and asks it to ground changes in concrete recorded
+evidence. It passed the 24-test suite and was deployed after the job finished.
+No subsequent live benchmark has measured that feedback change's effectiveness.
 
 The historical measurements below belong to the earlier prompt-only implementation.
 
@@ -60,7 +102,7 @@ After the user configured an OpenAI key, the installed agent ran `fix-git` using
 This establishes live model execution, verification, persistence and retrieval.
 It is not an improvement claim.
 
-## Full live optimization run
+## Initial prompt-only optimization run
 
 Job `efbafbbc-8ceb-4607-9cf6-d75bb29cdd73` completed through `test_client.py` using
 `gpt-4.1-mini` for both the agent and optimizer. It ran from 19:23:02 to 19:39:49 UTC:
