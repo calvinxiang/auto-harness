@@ -51,3 +51,8 @@ change an existing job's history or best version. No reliable general gain is cl
 
 E2B integration, optimization of service/runtime infrastructure,
 statistical promotion rules and production-grade VM isolation are outside this implementation.
+
+Review links: [setup and design](https://github.com/calvinxiang/auto-harness/blob/feat/agent-optimization-service/README.md),
+[experiment report](https://github.com/calvinxiang/auto-harness/blob/feat/agent-optimization-service/docs/EXPERIMENT_RESULTS.md),
+[generated code and structured results](https://github.com/calvinxiang/auto-harness/blob/feat/agent-optimization-service/docs/code-experiment-results.json),
+[validation record](https://github.com/calvinxiang/auto-harness/blob/feat/agent-optimization-service/docs/VALIDATION.md).

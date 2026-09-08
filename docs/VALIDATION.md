@@ -190,3 +190,4 @@ python test_client.py
 
 The API remains available on localhost:8080. GitHub authentication is configured;
 the submission uses a fork because the account lacks direct upstream push access.
+Submission: [PR #32](https://github.com/neosigmaai/auto-harness/pull/32).

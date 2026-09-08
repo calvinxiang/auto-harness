@@ -19,13 +19,14 @@ Read docs/EXPERIMENT_RESULTS.md and docs/code-experiment-results.json for the
 complete protocol, review history, source, hashes, per-task outcomes, usage and limits.
 The experiment used a GPT-5.4 optimizer, while both benchmark agents used 4.1-mini.
 The ordinary API defaults remain 4.1-mini for both roles; `.env` was not changed.
-Implementation checkpoint: `7044317`. Current uncommitted work is final documentation.
+Implementation checkpoint: `7044317`; complete results: `9fee270`.
 
 The user explicitly requested opening a PR after evaluation so the interviewer can
 review it. GitHub device sign-in succeeded as `calvinxiang`; fork
 `calvinxiang/auto-harness` is ready. Upstream push permission is false. Final
-publication is in progress using workspace/github_submission.py; no further user
-authorization is required. Do not print credentials. Earlier status notes below
+publication is complete: https://github.com/neosigmaai/auto-harness/pull/32, from
+`calvinxiang:feat/agent-optimization-service`. No further user authorization is
+required. Do not print credentials. Earlier status notes below
 are a historical work log, superseded by this section.
 
 ## Objective and reference
