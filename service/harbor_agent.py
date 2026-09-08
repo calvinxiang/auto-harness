@@ -29,6 +29,9 @@ class SandboxHarnessAgent(BaseAgent):
             await environment.upload_file(path, '/opt/harness/instruction.txt')
         # Only inference credentials cross the boundary: no DB, bootstrap or E2B key.
         env = {key: os.environ[key] for key in ('OPENAI_API_KEY', 'OPENAI_BASE_URL', 'AGENT_MODEL')}
+        for key in ('AGENT_API', 'AGENT_REASONING_EFFORT', 'AGENT_MAX_OUTPUT_TOKENS'):
+            if key in os.environ:
+                env[key] = os.environ[key]
         result = await environment.exec('timeout --signal=TERM --kill-after=5s 300s python3 /opt/harness/agent.py', env=env, timeout_sec=320)
         try:
             meta_path = self.logs_dir / 'meta.json'

@@ -1,5 +1,6 @@
 from functools import lru_cache
 from typing import Literal
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,6 +11,9 @@ class Settings(BaseSettings):
     openai_api_key: str = ''
     openai_base_url: str = 'https://api.openai.com/v1'
     agent_model: str = 'gpt-4.1-mini'
+    agent_api: Literal['chat_completions', 'responses'] = 'chat_completions'
+    agent_reasoning_effort: Literal['', 'none', 'low', 'medium', 'high', 'xhigh', 'max'] = ''
+    agent_max_output_tokens: int = Field(default=4096, ge=256, le=128000)
     optimizer_model: str = 'gpt-4.1-mini'
     optimizer_reasoning_effort: Literal['', 'none', 'low', 'medium', 'high', 'xhigh'] = ''
     sandbox_provider: str = 'docker'
@@ -28,6 +32,8 @@ def settings() -> Settings:
 def execution_config():
     cfg = settings()
     return {'dataset': 'terminal-bench@2.0', 'agent_model': cfg.agent_model,
+            'agent_api': cfg.agent_api, 'agent_reasoning_effort': cfg.agent_reasoning_effort,
+            'agent_max_output_tokens': cfg.agent_max_output_tokens,
             'optimizer_model': cfg.optimizer_model, 'sandbox_provider': cfg.sandbox_provider,
             'optimizer_reasoning_effort': cfg.optimizer_reasoning_effort,
             'agent_timeout_seconds': 300, 'max_steps': 80, 'task_concurrency': 2,

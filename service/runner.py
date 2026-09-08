@@ -165,7 +165,9 @@ class HarborRunner:
             cmd.extend(['--task-name', task])
         env = os.environ.copy()
         env.update(HARNESS_AGENT_SOURCE=str(source_path), PYTHONPATH='/app',
-                   AGENT_MODEL=cfg.agent_model, OPENAI_BASE_URL=cfg.openai_base_url)
+                   AGENT_MODEL=cfg.agent_model, OPENAI_BASE_URL=cfg.openai_base_url,
+                   AGENT_API=cfg.agent_api, AGENT_REASONING_EFFORT=cfg.agent_reasoning_effort,
+                   AGENT_MAX_OUTPUT_TOKENS=str(cfg.agent_max_output_tokens))
         deadline = time.monotonic() + cfg.benchmark_timeout_seconds
         execution_error = None
         with (root / 'harbor.log').open('w') as log:

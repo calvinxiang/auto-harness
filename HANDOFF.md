@@ -1,6 +1,46 @@
 # Agent optimization service handoff
 
-## Final state (2026-09-08)
+## Latest state: flagship baseline complete (2026-09-08)
+
+User authorized trying the strongest available model, with price not a constraint.
+The key lists `gpt-6-astra`; live Responses tool-call and two-turn protocol probes
+passed. Official guidance requires Responses for Astra tool calls. Added explicit
+agent API, reasoning effort and output budget settings, Responses translation with
+native reasoning/phase replay, and incomplete-response diagnostics. Policy code,
+prompt, tools, dataset, 300s task limit, 80 calls and concurrency 2 are unchanged.
+37 PostgreSQL tests and all offline sandbox checks pass. Images rebuilt and deployed.
+
+Ignored `.env` now sets AGENT_MODEL=gpt-6-astra, AGENT_API=responses,
+AGENT_REASONING_EFFORT=xhigh, AGENT_MAX_OUTPUT_TOKENS=32768. Optimizer defaults are
+unchanged and the active job has zero proposals. This is a model/configuration
+comparison, not a strict model-only ablation: Responses and a larger reasoning/output
+allowance are required to exercise the new model properly. Never print credentials.
+
+Full 10-development-task API job: `8ef90c0f-134d-4009-918c-0dcc64a92418` succeeded:
+**7/10 passed**, 3 failed, zero runner errors, 13m01s, 22:25:45 to 22:38:46 UTC.
+Organization: `b10dc6fe-59b0-4b6b-885a-18e2c6444287`. Complete client output is in
+`workspace/live-astra-baseline.json`; corresponding local client credentials are
+ignored. Policy equality with prior baseline was verified. Public exact runnable
+source, configuration, hashes, usage and task results: `docs/flagship-results.json`.
+Readable analysis: `docs/FLAGSHIP_EXPERIMENT.md`. No optimizer, retries or score edits.
+
+Failed tasks: configure-git-webserver (local push/HTTP worked, verifier SSH flow
+failed; login setup assumptions differ), extract-elf (0% address coverage and
+305.3s execution consistent with watchdog; last metadata is incomplete), and
+nginx-request-logging (7/8 checks pass; extra request-time field followed user agent,
+while verifier requires user agent last). These are documented without changing
+the official rewards. Earlier mini baseline totals: 4/10, 1/10, 1/10; nginx passed
+in the earlier 4/10 run. This single result is not evidence of uniform improvement.
+
+Usage: 989,676 input / 47,617 output tokens, including 16,080 reasoning tokens;
+89 model calls. Full tests pass after the logging-only deep-copy fix; this fix did
+not change the running job's frozen source. The local fixture smoke explicitly
+selects Chat Completions so the Astra environment does not break fixture requests.
+Final real Harbor/local-model smoke `354cf62f-6c81-409c-bdc6-f6897f2f3b74`
+passed tool dispatch, trace collection and isolation checks. Final API/worker
+images are deployed and `/health` is ok. This follow-up is included in PR #32.
+
+## Prior completed code experiment (2026-09-08)
 
 The implementation and requested controlled experiment are complete. All five
 milestones have implementation paths and coverage. **32 PostgreSQL tests pass**;

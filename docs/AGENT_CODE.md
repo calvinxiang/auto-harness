@@ -29,6 +29,17 @@ edits. A model-call budget, per-command timeout and outer process watchdog bound
 execution. Harbor controls task setup and verification. The optimizer cannot edit
 the worker, runtime, adapter, database or benchmark through its response schema.
 
+The runtime supports Chat Completions and Responses behind the same policy API.
+Responses retains the original output items, including encrypted reasoning and
+assistant phases, for unmodified messages still in the policy's context. Removing
+a complete group during compaction also removes its native items; editing an
+assistant message reconstructs that message without replaying stale reasoning.
+Transport, reasoning effort and output-token allowance are operator settings saved
+in the job configuration. Truncated, refused or empty model responses raise an
+error after saving their usage and completion status; partial tool calls are never
+returned to the policy for execution. This transport is for synchronous function
+tools; it does not add hosted tools or asynchronous tool dispatch to the policy.
+
 ## Validation and history
 
 1. Parse the JSON proposal containing `diagnosis`, `rationale` and `agent_code`.

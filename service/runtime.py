@@ -26,11 +26,10 @@ def truncate(text, limit=MAX_OUTPUT_CHARS):
     return text[:half] + f'\n... [{len(text)-limit} chars truncated] ...\n' + text[-half:]
 
 
-def call_model(messages, tools):
-    data = json.dumps({'model': os.environ['AGENT_MODEL'], 'messages': messages,
-                       'tools': tools, 'tool_choice': 'auto', 'max_completion_tokens': 4096}).encode()
-    request = urllib.request.Request(os.environ['OPENAI_BASE_URL'].rstrip('/') + '/chat/completions',
-        data=data, headers={'Authorization': 'Bearer ' + os.environ['OPENAI_API_KEY'], 'Content-Type': 'application/json'})
+def request_model(endpoint, payload):
+    request = urllib.request.Request(os.environ['OPENAI_BASE_URL'].rstrip('/') + endpoint,
+        data=json.dumps(payload).encode(),
+        headers={'Authorization': 'Bearer ' + os.environ['OPENAI_API_KEY'], 'Content-Type': 'application/json'})
     for attempt in range(3):
         try:
             with urllib.request.urlopen(request, timeout=90) as response:
@@ -42,6 +41,85 @@ def call_model(messages, tools):
             if attempt == 2:
                 raise RuntimeError('LLM connection failed') from None
         time.sleep(2 ** attempt)
+
+
+def message_key(message):
+    return json.dumps(message, sort_keys=True)
+
+
+def responses_input(messages, saved_outputs):
+    """Replay native output items, including encrypted reasoning and message phase.
+
+    Only replay items for assistant messages still present and unmodified in the
+    policy's context. Context compaction must not silently restore dropped turns.
+    """
+    items = []
+    for message in messages:
+        role = message['role']
+        if role == 'tool':
+            items.append({'type': 'function_call_output', 'call_id': message['tool_call_id'],
+                          'output': message['content']})
+        elif role == 'assistant':
+            native = saved_outputs.get(message_key(message))
+            if native is not None:
+                items.extend(native)
+                continue
+            if message.get('content'):
+                items.append({'role': role, 'content': message['content']})
+            for call in message.get('tool_calls') or []:
+                items.append({'type': 'function_call', 'call_id': call['id'],
+                              'name': call['function']['name'], 'arguments': call['function']['arguments']})
+        else:
+            items.append({'role': role, 'content': message['content']})
+    return items
+
+
+def call_model(messages, tools, saved_outputs=None):
+    model = os.environ['AGENT_MODEL']
+    effort = os.environ.get('AGENT_REASONING_EFFORT', '')
+    budget = int(os.environ.get('AGENT_MAX_OUTPUT_TOKENS', '4096'))
+    if os.environ.get('AGENT_API', 'chat_completions') == 'chat_completions':
+        payload = {'model': model, 'messages': messages, 'tools': tools,
+                   'tool_choice': 'auto', 'max_completion_tokens': budget}
+        if effort:
+            payload['reasoning_effort'] = effort
+        return request_model('/chat/completions', payload)
+    # Preserve the existing policy tool schema semantics: Responses otherwise
+    # defaults to strict normalization, unlike Chat Completions.
+    payload = {'model': model, 'input': responses_input(messages, saved_outputs or {}),
+               'tools': [{'type': 'function', 'strict': False, **tool['function']} for tool in tools],
+               'tool_choice': 'auto', 'max_output_tokens': budget, 'store': False,
+               'include': ['reasoning.encrypted_content']}
+    if effort:
+        payload['reasoning'] = {'effort': effort}
+    response = request_model('/responses', payload)
+    output = response.get('output', [])
+    content, calls = [], []
+    refused = False
+    for item in output:
+        if item['type'] == 'function_call':
+            calls.append({'id': item['call_id'], 'type': 'function', 'function': {
+                'name': item['name'], 'arguments': item['arguments']}})
+        elif item['type'] == 'message':
+            for part in item.get('content', []):
+                if part['type'] == 'output_text':
+                    content.append(part['text'])
+                elif part['type'] == 'refusal':
+                    refused = True
+    message = {'role': 'assistant', 'content': '\n'.join(content) or None}
+    if calls:
+        message['tool_calls'] = calls
+    status = response.get('status')
+    finish = ('tool_calls' if calls else 'stop') if status == 'completed' else status or 'missing_status'
+    if refused:
+        finish = 'content_filter'
+    usage = response.get('usage') or {}
+    return {'choices': [{'message': message, 'finish_reason': finish}],
+            'model': response.get('model'), 'incomplete_details': response.get('incomplete_details'),
+            'usage': {'prompt_tokens': usage.get('input_tokens', 0),
+                      'completion_tokens': usage.get('output_tokens', 0),
+                      'completion_tokens_details': usage.get('output_tokens_details') or {}},
+            '_native_output': output, '_provider_request': payload}
 
 
 def bash(command):
@@ -79,11 +157,21 @@ class CallBudgetExceeded(Exception):
     pass
 
 
+class ModelResponseError(Exception):
+    pass
+
+
 class AgentAPI:
     def __init__(self):
         self.trace = []
         self.requests = []
+        self.saved_outputs = {}
         self.meta = {'input_tokens': 0, 'output_tokens': 0, 'model_calls': 0,
+                     'reasoning_tokens': 0,
+                     'agent_model': os.environ.get('AGENT_MODEL'),
+                     'agent_api': os.environ.get('AGENT_API', 'chat_completions'),
+                     'reasoning_effort': os.environ.get('AGENT_REASONING_EFFORT', ''),
+                     'max_output_tokens': int(os.environ.get('AGENT_MAX_OUTPUT_TOKENS', '4096')),
                      'stop_reason': 'agent_declared_complete'}
 
     def save(self):
@@ -104,14 +192,32 @@ class AgentAPI:
         if not self.trace:
             self.trace.extend(json.loads(json.dumps(messages[:2])))
         self.save()
-        response = call_model(messages, tools)
+        response = call_model(messages, tools, self.saved_outputs)
         usage = response.get('usage', {})
         self.meta['input_tokens'] += usage.get('prompt_tokens', 0)
         self.meta['output_tokens'] += usage.get('completion_tokens', 0)
+        self.meta['reasoning_tokens'] += (usage.get('completion_tokens_details') or {}).get('reasoning_tokens', 0)
+        finish = response['choices'][0].get('finish_reason', 'stop')
+        self.meta['last_finish_reason'] = finish
+        self.meta['resolved_model'] = response.get('model')
+        self.meta['incomplete_details'] = response.get('incomplete_details')
+        self.requests[-1]['response'] = {k: response.get(k) for k in ('model', 'usage', 'incomplete_details')}
+        self.requests[-1]['response']['finish_reason'] = finish
+        if '_provider_request' in response:
+            self.requests[-1]['provider_request'] = json.loads(json.dumps(response['_provider_request']))
+            self.requests[-1]['response']['output'] = json.loads(json.dumps(response['_native_output']))
         message = {k: v for k, v in response['choices'][0]['message'].items()
                    if k in ('role', 'content', 'tool_calls')}
         self.trace.append(json.loads(json.dumps(message)))
         self.save()
+        # Never treat exhausted reasoning tokens or partial tool arguments as a
+        # completed task. Preserve response metadata and usage before failing.
+        if finish not in ('stop', 'tool_calls'):
+            raise ModelResponseError('LLM response did not complete: ' + str(finish))
+        if not message.get('content') and not message.get('tool_calls'):
+            raise ModelResponseError('LLM returned no text or tool calls')
+        if '_native_output' in response:
+            self.saved_outputs[message_key(message)] = json.loads(json.dumps(response['_native_output']))
         return message
 
     def bash(self, command):

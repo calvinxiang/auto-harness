@@ -24,7 +24,8 @@ from .runner import HarborRunner, read_text
 
 HOLDOUT_TASKS = ['cancel-async-tasks', 'openssl-selfsigned-cert', 'large-scale-text-editing']
 BENCHMARK_KEYS = ['dataset', 'agent_model', 'sandbox_provider', 'agent_timeout_seconds',
-                  'max_steps', 'task_concurrency', 'harbor_version', 'agent_contract']
+                  'max_steps', 'task_concurrency', 'harbor_version', 'agent_contract',
+                  'agent_api', 'agent_reasoning_effort', 'agent_max_output_tokens']
 
 
 def now():

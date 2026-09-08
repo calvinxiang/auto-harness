@@ -1,0 +1,431 @@
+{
+  "experiment": "Original policy with flagship model; no optimization",
+  "job": {
+    "id": "8ef90c0f-134d-4009-918c-0dcc64a92418",
+    "status": "succeeded",
+    "request": {
+      "task_ids": [
+        "fix-git",
+        "regex-log",
+        "git-leak-recovery",
+        "log-summary-date-ranges",
+        "build-cython-ext",
+        "configure-git-webserver",
+        "fix-code-vulnerability",
+        "extract-elf",
+        "nginx-request-logging",
+        "sqlite-db-truncate"
+      ],
+      "execution": {
+        "dataset": "terminal-bench@2.0",
+        "agent_api": "responses",
+        "max_steps": 80,
+        "agent_model": "gpt-6-astra",
+        "agent_contract": "python-policy-v1",
+        "harbor_version": "0.1.45",
+        "optimizer_model": "gpt-4.1-mini",
+        "sandbox_provider": "docker",
+        "task_concurrency": 2,
+        "agent_timeout_seconds": 300,
+        "agent_reasoning_effort": "xhigh",
+        "agent_max_output_tokens": 32768,
+        "optimizer_reasoning_effort": ""
+      },
+      "max_iterations": 0
+    },
+    "started_at": "2026-09-08 22:25:45.796543+00:00",
+    "finished_at": "2026-09-08 22:38:46.478442+00:00",
+    "attempts": 1,
+    "best_score": 0.7,
+    "stop_reason": "max_iterations",
+    "error": null
+  },
+  "duration_seconds": 780.681899,
+  "iteration_id": "9eefa281-0343-400e-ab38-81dbeea86afc",
+  "source_sha256": "e8823102f6a5f553df7bd5885e4e3eeca79295c72e293ce05a081f43e1121ae0",
+  "policy_sha256": "0a042f1670391a60b9173be5d4ba2c80dbd1f29653efe23c1436c33abeeef320",
+  "agent_code": "\"\"\"Editable agent behavior, executed only inside the sandbox.\n\nThe optimizer may change this module's prompt, tools, helpers, context management,\nand run_agent loop. The runtime supplies model calls, bash execution and logging.\n\"\"\"\nimport json\n\nAGENT_INSTRUCTION = 'You are an autonomous terminal agent. You are given a task and a Linux container.\\nYou solve tasks by executing bash commands. Work step by step.\\n\\nRules:\\n- Read the task carefully before acting.\\n- Explore the environment first to understand what you have.\\n- Check command output for errors before proceeding.\\n- Install missing dependencies as needed.\\n- Verify your solution before finishing.\\n- When you are done, send a final text message (no tool call) summarizing what you did.\\n'\nTOOLS = [{'type': 'function', 'function': {\n    'name': 'bash', 'description': 'Execute a bash command in the container. Returns stdout and stderr.',\n    'parameters': {'type': 'object', 'properties': {'command': {'type': 'string', 'description': 'The bash command to execute.'}}, 'required': ['command']},\n}}]\n\n\ndef run_agent(api, instruction):\n    messages = [{'role': 'system', 'content': AGENT_INSTRUCTION},\n                {'role': 'user', 'content': 'Task:\\n' + instruction}]\n    while True:\n        message = api.model(messages, TOOLS)\n        messages.append(message)\n        calls = message.get('tool_calls') or []\n        if not calls:\n            return\n        for call in calls:\n            try:\n                args = json.loads(call['function']['arguments'])\n                if call['function']['name'] != 'bash' or not isinstance(args.get('command'), str):\n                    raise ValueError('Invalid bash tool call')\n                result = api.bash(args['command'])\n            except (ValueError, TypeError) as exc:\n                result = str(exc)\n            result = str(result)\n            api.tool_result(call['id'], result)\n            messages.append({'role': 'tool', 'tool_call_id': call['id'], 'content': result})\n",
+  "agent_source": "\"\"\"Sandbox runtime bundled with a versioned, editable Python agent policy.\n\nThe service packages POLICY_SOURCE as data; only this sandbox entry point executes\nit. Model transport, call accounting and process watchdogs belong to the runtime.\n\"\"\"\nimport json\nimport os\nfrom pathlib import Path\nimport signal\nimport subprocess\nimport sys\nimport tempfile\nimport time\nimport urllib.error\nimport urllib.request\n\nPOLICY_SOURCE = '\"\"\"Editable agent behavior, executed only inside the sandbox.\\n\\nThe optimizer may change this module\\'s prompt, tools, helpers, context management,\\nand run_agent loop. The runtime supplies model calls, bash execution and logging.\\n\"\"\"\\nimport json\\n\\nAGENT_INSTRUCTION = \\'You are an autonomous terminal agent. You are given a task and a Linux container.\\\\nYou solve tasks by executing bash commands. Work step by step.\\\\n\\\\nRules:\\\\n- Read the task carefully before acting.\\\\n- Explore the environment first to understand what you have.\\\\n- Check command output for errors before proceeding.\\\\n- Install missing dependencies as needed.\\\\n- Verify your solution before finishing.\\\\n- When you are done, send a final text message (no tool call) summarizing what you did.\\\\n\\'\\nTOOLS = [{\\'type\\': \\'function\\', \\'function\\': {\\n    \\'name\\': \\'bash\\', \\'description\\': \\'Execute a bash command in the container. Returns stdout and stderr.\\',\\n    \\'parameters\\': {\\'type\\': \\'object\\', \\'properties\\': {\\'command\\': {\\'type\\': \\'string\\', \\'description\\': \\'The bash command to execute.\\'}}, \\'required\\': [\\'command\\']},\\n}}]\\n\\n\\ndef run_agent(api, instruction):\\n    messages = [{\\'role\\': \\'system\\', \\'content\\': AGENT_INSTRUCTION},\\n                {\\'role\\': \\'user\\', \\'content\\': \\'Task:\\\\n\\' + instruction}]\\n    while True:\\n        message = api.model(messages, TOOLS)\\n        messages.append(message)\\n        calls = message.get(\\'tool_calls\\') or []\\n        if not calls:\\n            return\\n        for call in calls:\\n            try:\\n                args = json.loads(call[\\'function\\'][\\'arguments\\'])\\n                if call[\\'function\\'][\\'name\\'] != \\'bash\\' or not isinstance(args.get(\\'command\\'), str):\\n                    raise ValueError(\\'Invalid bash tool call\\')\\n                result = api.bash(args[\\'command\\'])\\n            except (ValueError, TypeError) as exc:\\n                result = str(exc)\\n            result = str(result)\\n            api.tool_result(call[\\'id\\'], result)\\n            messages.append({\\'role\\': \\'tool\\', \\'tool_call_id\\': call[\\'id\\'], \\'content\\': result})\\n'\nMAX_STEPS = 80\nMAX_OUTPUT_CHARS = 8000\n\n\ndef truncate(text, limit=MAX_OUTPUT_CHARS):\n    if len(text) <= limit:\n        return text\n    half = limit // 2\n    return text[:half] + f'\\n... [{len(text)-limit} chars truncated] ...\\n' + text[-half:]\n\n\ndef request_model(endpoint, payload):\n    request = urllib.request.Request(os.environ['OPENAI_BASE_URL'].rstrip('/') + endpoint,\n        data=json.dumps(payload).encode(),\n        headers={'Authorization': 'Bearer ' + os.environ['OPENAI_API_KEY'], 'Content-Type': 'application/json'})\n    for attempt in range(3):\n        try:\n            with urllib.request.urlopen(request, timeout=90) as response:\n                return json.loads(response.read(2_000_000))\n        except urllib.error.HTTPError as exc:\n            if attempt == 2 or exc.code not in (429, 500, 502, 503, 504):\n                raise RuntimeError(f'LLM HTTP {exc.code}') from None\n        except (urllib.error.URLError, TimeoutError):\n            if attempt == 2:\n                raise RuntimeError('LLM connection failed') from None\n        time.sleep(2 ** attempt)\n\n\ndef message_key(message):\n    return json.dumps(message, sort_keys=True)\n\n\ndef responses_input(messages, saved_outputs):\n    \"\"\"Replay native output items, including encrypted reasoning and message phase.\n\n    Only replay items for assistant messages still present and unmodified in the\n    policy's context. Context compaction must not silently restore dropped turns.\n    \"\"\"\n    items = []\n    for message in messages:\n        role = message['role']\n        if role == 'tool':\n            items.append({'type': 'function_call_output', 'call_id': message['tool_call_id'],\n                          'output': message['content']})\n        elif role == 'assistant':\n            native = saved_outputs.get(message_key(message))\n            if native is not None:\n                items.extend(native)\n                continue\n            if message.get('content'):\n                items.append({'role': role, 'content': message['content']})\n            for call in message.get('tool_calls') or []:\n                items.append({'type': 'function_call', 'call_id': call['id'],\n                              'name': call['function']['name'], 'arguments': call['function']['arguments']})\n        else:\n            items.append({'role': role, 'content': message['content']})\n    return items\n\n\ndef call_model(messages, tools, saved_outputs=None):\n    model = os.environ['AGENT_MODEL']\n    effort = os.environ.get('AGENT_REASONING_EFFORT', '')\n    budget = int(os.environ.get('AGENT_MAX_OUTPUT_TOKENS', '4096'))\n    if os.environ.get('AGENT_API', 'chat_completions') == 'chat_completions':\n        payload = {'model': model, 'messages': messages, 'tools': tools,\n                   'tool_choice': 'auto', 'max_completion_tokens': budget}\n        if effort:\n            payload['reasoning_effort'] = effort\n        return request_model('/chat/completions', payload)\n    # Preserve the existing policy tool schema semantics: Responses otherwise\n    # defaults to strict normalization, unlike Chat Completions.\n    payload = {'model': model, 'input': responses_input(messages, saved_outputs or {}),\n               'tools': [{'type': 'function', 'strict': False, **tool['function']} for tool in tools],\n               'tool_choice': 'auto', 'max_output_tokens': budget, 'store': False,\n               'include': ['reasoning.encrypted_content']}\n    if effort:\n        payload['reasoning'] = {'effort': effort}\n    response = request_model('/responses', payload)\n    output = response.get('output', [])\n    content, calls = [], []\n    refused = False\n    for item in output:\n        if item['type'] == 'function_call':\n            calls.append({'id': item['call_id'], 'type': 'function', 'function': {\n                'name': item['name'], 'arguments': item['arguments']}})\n        elif item['type'] == 'message':\n            for part in item.get('content', []):\n                if part['type'] == 'output_text':\n                    content.append(part['text'])\n                elif part['type'] == 'refusal':\n                    refused = True\n    message = {'role': 'assistant', 'content': '\\n'.join(content) or None}\n    if calls:\n        message['tool_calls'] = calls\n    status = response.get('status')\n    finish = ('tool_calls' if calls else 'stop') if status == 'completed' else status or 'missing_status'\n    if refused:\n        finish = 'content_filter'\n    usage = response.get('usage') or {}\n    return {'choices': [{'message': message, 'finish_reason': finish}],\n            'model': response.get('model'), 'incomplete_details': response.get('incomplete_details'),\n            'usage': {'prompt_tokens': usage.get('input_tokens', 0),\n                      'completion_tokens': usage.get('output_tokens', 0),\n                      'completion_tokens_details': usage.get('output_tokens_details') or {}},\n            '_native_output': output, '_provider_request': payload}\n\n\ndef bash(command):\n    # Spool command output to disk and retain its head/tail without exhausting RAM.\n    def limits():\n        import resource\n        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))\n    with tempfile.TemporaryFile() as output:\n        proc = subprocess.Popen(['bash', '-lc', command], stdout=output, stderr=subprocess.STDOUT,\n                                start_new_session=True, preexec_fn=limits)\n        timed_out = False\n        try:\n            proc.wait(timeout=120)\n        except subprocess.TimeoutExpired:\n            timed_out = True\n            os.killpg(proc.pid, signal.SIGKILL)\n            proc.wait()\n        finally:\n            # The overall agent watchdog can interrupt us while a bash child runs.\n            if proc.poll() is None:\n                os.killpg(proc.pid, signal.SIGKILL)\n                proc.wait()\n        length = output.tell()\n        output.seek(0)\n        head = output.read(MAX_OUTPUT_CHARS // 2)\n        if length > MAX_OUTPUT_CHARS:\n            output.seek(-MAX_OUTPUT_CHARS // 2, 2)\n            raw = head + b'\\n... output truncated ...\\n' + output.read()\n        else:\n            raw = head + output.read()\n    return raw.decode(errors='replace') + f'\\n[exit code: {proc.returncode}; timed_out: {timed_out}]'\n\n\nclass CallBudgetExceeded(Exception):\n    pass\n\n\nclass ModelResponseError(Exception):\n    pass\n\n\nclass AgentAPI:\n    def __init__(self):\n        self.trace = []\n        self.requests = []\n        self.saved_outputs = {}\n        self.meta = {'input_tokens': 0, 'output_tokens': 0, 'model_calls': 0,\n                     'reasoning_tokens': 0,\n                     'agent_model': os.environ.get('AGENT_MODEL'),\n                     'agent_api': os.environ.get('AGENT_API', 'chat_completions'),\n                     'reasoning_effort': os.environ.get('AGENT_REASONING_EFFORT', ''),\n                     'max_output_tokens': int(os.environ.get('AGENT_MAX_OUTPUT_TOKENS', '4096')),\n                     'stop_reason': 'agent_declared_complete'}\n\n    def save(self):\n        Path('/logs/agent/trace.json').write_text(json.dumps(self.trace))\n        Path('/logs/agent/requests.json').write_text(json.dumps(self.requests))\n        Path('/logs/agent/meta.json').write_text(json.dumps(self.meta))\n\n    def model(self, messages, tools):\n        check_messages(messages)\n        if self.meta['model_calls'] >= MAX_STEPS:\n            raise CallBudgetExceeded()\n        self.meta['model_calls'] += 1\n        # Preserve the actual request after context edits, plus an independent event\n        # trace. The optimizer cannot accidentally erase history by compacting context.\n        self.requests.append({'call': self.meta['model_calls'],\n                              'messages': json.loads(json.dumps(messages)),\n                              'tools': json.loads(json.dumps(tools))})\n        if not self.trace:\n            self.trace.extend(json.loads(json.dumps(messages[:2])))\n        self.save()\n        response = call_model(messages, tools, self.saved_outputs)\n        usage = response.get('usage', {})\n        self.meta['input_tokens'] += usage.get('prompt_tokens', 0)\n        self.meta['output_tokens'] += usage.get('completion_tokens', 0)\n        self.meta['reasoning_tokens'] += (usage.get('completion_tokens_details') or {}).get('reasoning_tokens', 0)\n        finish = response['choices'][0].get('finish_reason', 'stop')\n        self.meta['last_finish_reason'] = finish\n        self.meta['resolved_model'] = response.get('model')\n        self.meta['incomplete_details'] = response.get('incomplete_details')\n        self.requests[-1]['response'] = {k: response.get(k) for k in ('model', 'usage', 'incomplete_details')}\n        self.requests[-1]['response']['finish_reason'] = finish\n        if '_provider_request' in response:\n            self.requests[-1]['provider_request'] = response['_provider_request']\n            self.requests[-1]['response']['output'] = response['_native_output']\n        message = {k: v for k, v in response['choices'][0]['message'].items()\n                   if k in ('role', 'content', 'tool_calls')}\n        self.trace.append(json.loads(json.dumps(message)))\n        self.save()\n        # Never treat exhausted reasoning tokens or partial tool arguments as a\n        # completed task. Preserve response metadata and usage before failing.\n        if finish not in ('stop', 'tool_calls'):\n            raise ModelResponseError('LLM response did not complete: ' + str(finish))\n        if not message.get('content') and not message.get('tool_calls'):\n            raise ModelResponseError('LLM returned no text or tool calls')\n        if '_native_output' in response:\n            self.saved_outputs[message_key(message)] = json.loads(json.dumps(response['_native_output']))\n        return message\n\n    def bash(self, command):\n        if not isinstance(command, str):\n            raise ValueError('Command must be a string')\n        return bash(command)\n\n    def tool_result(self, call_id, content):\n        self.trace.append({'role': 'tool', 'tool_call_id': call_id, 'content': str(content)})\n        self.save()\n\n\ndef check_messages(messages):\n    \"\"\"Check tool-call pairing, including after proposed context compaction.\"\"\"\n    if not isinstance(messages, list) or not messages:\n        raise ValueError('Messages must be a nonempty list')\n    pending = set()\n    for message in messages:\n        role = message['role']\n        if role == 'tool':\n            call_id = message['tool_call_id']\n            if call_id not in pending:\n                raise ValueError('Orphaned tool result')\n            pending.remove(call_id)\n        else:\n            if pending:\n                raise ValueError('Missing tool result')\n            if role == 'assistant':\n                calls = message.get('tool_calls') or []\n                pending = {c['id'] for c in calls}\n                if len(pending) != len(calls):\n                    raise ValueError('Duplicate tool call ID')\n    if pending:\n        raise ValueError('Missing tool result')\n\n\nclass FixtureAPI:\n    \"\"\"Offline contract check. No credentials, model request or command execution.\"\"\"\n    def __init__(self):\n        self.calls = 0\n        self.bash_calls = 0\n        self.outputs = []\n\n    def model(self, messages, tools):\n        check_messages(messages)\n        self.calls += 1\n        if self.calls > 8:\n            raise ValueError('Agent did not terminate after completion responses')\n        bash_tool = next(t['function'] for t in tools if t['function']['name'] == 'bash')\n        if self.calls > 1:\n            return {'role': 'assistant', 'content': 'The requested fixture command succeeded.'}\n        args = {'command': 'printf contract-check'}\n        for name in bash_tool['parameters'].get('required', []):\n            if name not in args:\n                args[name] = 'Inspecting the fixture environment.'\n        return {'role': 'assistant', 'content': None, 'tool_calls': [{\n            'id': 'contract-call', 'type': 'function', 'function': {\n                'name': 'bash', 'arguments': json.dumps(args)}}]}\n\n    def bash(self, command):\n        if not isinstance(command, str):\n            raise ValueError('Command must be a string')\n        self.bash_calls += 1\n        return 'contract-check\\n[exit code: 0; timed_out: False]'\n\n    def tool_result(self, call_id, content):\n        self.outputs.append((call_id, content))\n\n\ndef main():\n    def budget_exceeded(*_):\n        raise TimeoutError('Agent time budget exceeded')\n    signal.signal(signal.SIGTERM, budget_exceeded)\n    module = {'__name__': 'agent_policy'}\n    if '--self-test' in sys.argv:\n        exec(compile(POLICY_SOURCE, '<agent_policy>', 'exec'), module)\n        fixture = FixtureAPI()\n        module['run_agent'](fixture, 'Run a harmless inspection command and then finish.')\n        if fixture.calls < 2 or fixture.bash_calls < 1 or not fixture.outputs:\n            raise ValueError('Agent did not complete the model/tool/result contract')\n        print(json.dumps({'contract': 'passed', 'model_calls': fixture.calls}))\n        return\n    api = AgentAPI()\n    try:\n        exec(compile(POLICY_SOURCE, '<agent_policy>', 'exec'), module)\n        module['run_agent'](api, Path('/opt/harness/instruction.txt').read_text())\n    except CallBudgetExceeded:\n        api.meta['stop_reason'] = 'max_steps'\n    except Exception as exc:\n        api.meta['error'] = type(exc).__name__\n        api.meta['stop_reason'] = 'agent_error'\n        raise\n    finally:\n        api.save()\n\n\nif __name__ == '__main__':\n    main()\n",
+  "policy_identical_to_prior_baseline": true,
+  "prior_baseline_job_id": "4f31b776-a891-4bac-a0c3-3b9f07e14387",
+  "validation": {
+    "log": "{\"contract\": \"passed\", \"model_calls\": 2}\n",
+    "stage": "sandbox_contract",
+    "status": "passed",
+    "exit_code": 0,
+    "fixture_sha256": "41e9dfa85972d666e944ab621e392c06d5e12dd442690030766fe125f61c17bf"
+  },
+  "summary": {
+    "passed": 7,
+    "failed": 3,
+    "errors": 0,
+    "score": 0.7,
+    "runner_exit_code": 0
+  },
+  "usage": {
+    "input_tokens": 989676,
+    "output_tokens": 47617,
+    "reasoning_tokens": 16080,
+    "model_calls": 89
+  },
+  "tasks": [
+    {
+      "task_id": "fix-git",
+      "status": "passed",
+      "reward": 1.0,
+      "failure_summary": null,
+      "agent_metadata": {
+        "input_tokens": 34333,
+        "output_tokens": 1529,
+        "model_calls": 8,
+        "reasoning_tokens": 350,
+        "agent_model": "gpt-6-astra",
+        "agent_api": "responses",
+        "reasoning_effort": "xhigh",
+        "max_output_tokens": 32768,
+        "stop_reason": "agent_declared_complete",
+        "last_finish_reason": "stop",
+        "resolved_model": "gpt-6-astra",
+        "incomplete_details": null
+      },
+      "started_at": "2026-09-08T22:26:40.833274Z",
+      "finished_at": "2026-09-08T22:27:42.102080Z",
+      "agent_execution": {
+        "started_at": "2026-09-08T22:26:47.322374Z",
+        "finished_at": "2026-09-08T22:27:25.416330Z"
+      },
+      "exception_type": null,
+      "trace_signals": {
+        "bash_calls": 8,
+        "complete_trace": true,
+        "assistant_messages": 8,
+        "repeated_bash_calls": 0,
+        "most_repeated_commands": [],
+        "empty_no_tool_responses": 0
+      }
+    },
+    {
+      "task_id": "regex-log",
+      "status": "passed",
+      "reward": 1.0,
+      "failure_summary": null,
+      "agent_metadata": {
+        "input_tokens": 12719,
+        "output_tokens": 4073,
+        "model_calls": 6,
+        "reasoning_tokens": 1271,
+        "agent_model": "gpt-6-astra",
+        "agent_api": "responses",
+        "reasoning_effort": "xhigh",
+        "max_output_tokens": 32768,
+        "stop_reason": "agent_declared_complete",
+        "last_finish_reason": "stop",
+        "resolved_model": "gpt-6-astra",
+        "incomplete_details": null
+      },
+      "started_at": "2026-09-08T22:30:01.805910Z",
+      "finished_at": "2026-09-08T22:31:59.638289Z",
+      "agent_execution": {
+        "started_at": "2026-09-08T22:30:27.193483Z",
+        "finished_at": "2026-09-08T22:31:38.336659Z"
+      },
+      "exception_type": null,
+      "trace_signals": {
+        "bash_calls": 5,
+        "complete_trace": true,
+        "assistant_messages": 6,
+        "repeated_bash_calls": 0,
+        "most_repeated_commands": [],
+        "empty_no_tool_responses": 0
+      }
+    },
+    {
+      "task_id": "git-leak-recovery",
+      "status": "passed",
+      "reward": 1.0,
+      "failure_summary": null,
+      "agent_metadata": {
+        "input_tokens": 21521,
+        "output_tokens": 5094,
+        "model_calls": 6,
+        "reasoning_tokens": 1422,
+        "agent_model": "gpt-6-astra",
+        "agent_api": "responses",
+        "reasoning_effort": "xhigh",
+        "max_output_tokens": 32768,
+        "stop_reason": "agent_declared_complete",
+        "last_finish_reason": "stop",
+        "resolved_model": "gpt-6-astra",
+        "incomplete_details": null
+      },
+      "started_at": "2026-09-08T22:31:59.640297Z",
+      "finished_at": "2026-09-08T22:34:02.980130Z",
+      "agent_execution": {
+        "started_at": "2026-09-08T22:32:14.780733Z",
+        "finished_at": "2026-09-08T22:33:38.421963Z"
+      },
+      "exception_type": null,
+      "trace_signals": {
+        "bash_calls": 5,
+        "complete_trace": true,
+        "assistant_messages": 6,
+        "repeated_bash_calls": 0,
+        "most_repeated_commands": [],
+        "empty_no_tool_responses": 0
+      }
+    },
+    {
+      "task_id": "log-summary-date-ranges",
+      "status": "passed",
+      "reward": 1.0,
+      "failure_summary": null,
+      "agent_metadata": {
+        "input_tokens": 10551,
+        "output_tokens": 1410,
+        "model_calls": 5,
+        "reasoning_tokens": 78,
+        "agent_model": "gpt-6-astra",
+        "agent_api": "responses",
+        "reasoning_effort": "xhigh",
+        "max_output_tokens": 32768,
+        "stop_reason": "agent_declared_complete",
+        "last_finish_reason": "stop",
+        "resolved_model": "gpt-6-astra",
+        "incomplete_details": null
+      },
+      "started_at": "2026-09-08T22:25:51.224510Z",
+      "finished_at": "2026-09-08T22:26:40.830544Z",
+      "agent_execution": {
+        "started_at": "2026-09-08T22:25:56.792027Z",
+        "finished_at": "2026-09-08T22:26:22.449669Z"
+      },
+      "exception_type": null,
+      "trace_signals": {
+        "bash_calls": 4,
+        "complete_trace": true,
+        "assistant_messages": 5,
+        "repeated_bash_calls": 0,
+        "most_repeated_commands": [],
+        "empty_no_tool_responses": 0
+      }
+    },
+    {
+      "task_id": "build-cython-ext",
+      "status": "passed",
+      "reward": 1.0,
+      "failure_summary": null,
+      "agent_metadata": {
+        "input_tokens": 417884,
+        "output_tokens": 9616,
+        "model_calls": 19,
+        "reasoning_tokens": 2922,
+        "agent_model": "gpt-6-astra",
+        "agent_api": "responses",
+        "reasoning_effort": "xhigh",
+        "max_output_tokens": 32768,
+        "stop_reason": "agent_declared_complete",
+        "last_finish_reason": "stop",
+        "resolved_model": "gpt-6-astra",
+        "incomplete_details": null
+      },
+      "started_at": "2026-09-08T22:33:37.411014Z",
+      "finished_at": "2026-09-08T22:38:45.258135Z",
+      "agent_execution": {
+        "started_at": "2026-09-08T22:33:50.402339Z",
+        "finished_at": "2026-09-08T22:38:30.598572Z"
+      },
+      "exception_type": null,
+      "trace_signals": {
+        "bash_calls": 24,
+        "complete_trace": true,
+        "assistant_messages": 19,
+        "repeated_bash_calls": 0,
+        "most_repeated_commands": [],
+        "empty_no_tool_responses": 0
+      }
+    },
+    {
+      "task_id": "configure-git-webserver",
+      "status": "failed",
+      "reward": 0.0,
+      "failure_summary": "E       AssertionError: Did not pass test; E       assert 'TEST PASSED' in 'Hit:1 http://security.ubuntu.com/ubuntu noble-security InRelease\\nHit:2 http://archive.ubuntu.com/ubuntu noble InRele...Testing web server...\\nUsing curl to test web server...\\n\u274c TEST FAILED: Web server returned HTTP 404\\nTest completed\\n'; E        +  where 'Hit:1 http://security.ubuntu.com/ubuntu noble-security InRelease\\nHit:2 http://archive.ubuntu.com/ubuntu noble InRele...Testing web server...\\nUsing curl to test web server...\\n\u274c TEST FAILED: Web server returned HTTP 404\\nTest completed\\n' = CompletedProcess(args=['bash', '/tests/verify.sh'], returncode=0, stdout=\"Hit:1 http://security.ubuntu.com/ubuntu nobl...t installed\\nexpect: spawn id exp3 not open\\n    while executing\\n\"expect eof\"\\n    (file \"./git_test.exp\" line 15)\\n').stdout",
+      "agent_metadata": {
+        "input_tokens": 37024,
+        "output_tokens": 4563,
+        "model_calls": 7,
+        "reasoning_tokens": 1310,
+        "agent_model": "gpt-6-astra",
+        "agent_api": "responses",
+        "reasoning_effort": "xhigh",
+        "max_output_tokens": 32768,
+        "stop_reason": "agent_declared_complete",
+        "last_finish_reason": "stop",
+        "resolved_model": "gpt-6-astra",
+        "incomplete_details": null
+      },
+      "started_at": "2026-09-08T22:25:51.227164Z",
+      "finished_at": "2026-09-08T22:28:16.015358Z",
+      "agent_execution": {
+        "started_at": "2026-09-08T22:26:09.098013Z",
+        "finished_at": "2026-09-08T22:27:42.249977Z"
+      },
+      "exception_type": null,
+      "trace_signals": {
+        "bash_calls": 6,
+        "complete_trace": true,
+        "assistant_messages": 7,
+        "repeated_bash_calls": 0,
+        "most_repeated_commands": [],
+        "empty_no_tool_responses": 0
+      }
+    },
+    {
+      "task_id": "fix-code-vulnerability",
+      "status": "passed",
+      "reward": 1.0,
+      "failure_summary": null,
+      "agent_metadata": {
+        "input_tokens": 162437,
+        "output_tokens": 4280,
+        "model_calls": 11,
+        "reasoning_tokens": 1413,
+        "agent_model": "gpt-6-astra",
+        "agent_api": "responses",
+        "reasoning_effort": "xhigh",
+        "max_output_tokens": 32768,
+        "stop_reason": "agent_declared_complete",
+        "last_finish_reason": "stop",
+        "resolved_model": "gpt-6-astra",
+        "incomplete_details": null
+      },
+      "started_at": "2026-09-08T22:28:16.021333Z",
+      "finished_at": "2026-09-08T22:30:01.796181Z",
+      "agent_execution": {
+        "started_at": "2026-09-08T22:28:27.384545Z",
+        "finished_at": "2026-09-08T22:29:48.818173Z"
+      },
+      "exception_type": null,
+      "trace_signals": {
+        "bash_calls": 16,
+        "complete_trace": true,
+        "assistant_messages": 11,
+        "repeated_bash_calls": 0,
+        "most_repeated_commands": [],
+        "empty_no_tool_responses": 0
+      }
+    },
+    {
+      "task_id": "extract-elf",
+      "status": "failed",
+      "reward": 0.0,
+      "failure_summary": "E       AssertionError: Only found 0.00% of expected values (required: 75%); E       assert 0.0 >= 75; /tests/test_outputs.py:389: AssertionError",
+      "agent_metadata": {
+        "input_tokens": 262302,
+        "output_tokens": 11542,
+        "model_calls": 18,
+        "reasoning_tokens": 5434,
+        "agent_model": "gpt-6-astra",
+        "agent_api": "responses",
+        "reasoning_effort": "xhigh",
+        "max_output_tokens": 32768,
+        "stop_reason": "agent_declared_complete",
+        "last_finish_reason": "tool_calls",
+        "resolved_model": "gpt-6-astra",
+        "incomplete_details": null
+      },
+      "started_at": "2026-09-08T22:27:42.104795Z",
+      "finished_at": "2026-09-08T22:33:37.407335Z",
+      "agent_execution": {
+        "started_at": "2026-09-08T22:28:04.494961Z",
+        "finished_at": "2026-09-08T22:33:09.787711Z"
+      },
+      "exception_type": null,
+      "trace_signals": {
+        "bash_calls": 18,
+        "complete_trace": true,
+        "assistant_messages": 17,
+        "repeated_bash_calls": 0,
+        "most_repeated_commands": [],
+        "empty_no_tool_responses": 0
+      }
+    },
+    {
+      "task_id": "nginx-request-logging",
+      "status": "failed",
+      "reward": 0.0,
+      "failure_summary": "../tests/test_outputs.py::test_log_file_format FAILED                    [100%]; E       AssertionError: User agent missing in logs; E       assert None",
+      "agent_metadata": {
+        "input_tokens": 18120,
+        "output_tokens": 3436,
+        "model_calls": 5,
+        "reasoning_tokens": 1502,
+        "agent_model": "gpt-6-astra",
+        "agent_api": "responses",
+        "reasoning_effort": "xhigh",
+        "max_output_tokens": 32768,
+        "stop_reason": "agent_declared_complete",
+        "last_finish_reason": "stop",
+        "resolved_model": "gpt-6-astra",
+        "incomplete_details": null
+      },
+      "started_at": "2026-09-08T22:34:02.982152Z",
+      "finished_at": "2026-09-08T22:35:32.437088Z",
+      "agent_execution": {
+        "started_at": "2026-09-08T22:34:05.558307Z",
+        "finished_at": "2026-09-08T22:35:15.056723Z"
+      },
+      "exception_type": null,
+      "trace_signals": {
+        "bash_calls": 4,
+        "complete_trace": true,
+        "assistant_messages": 5,
+        "repeated_bash_calls": 0,
+        "most_repeated_commands": [],
+        "empty_no_tool_responses": 0
+      }
+    },
+    {
+      "task_id": "sqlite-db-truncate",
+      "status": "passed",
+      "reward": 1.0,
+      "failure_summary": null,
+      "agent_metadata": {
+        "input_tokens": 12785,
+        "output_tokens": 2074,
+        "model_calls": 4,
+        "reasoning_tokens": 378,
+        "agent_model": "gpt-6-astra",
+        "agent_api": "responses",
+        "reasoning_effort": "xhigh",
+        "max_output_tokens": 32768,
+        "stop_reason": "agent_declared_complete",
+        "last_finish_reason": "stop",
+        "resolved_model": "gpt-6-astra",
+        "incomplete_details": null
+      },
+      "started_at": "2026-09-08T22:35:32.439198Z",
+      "finished_at": "2026-09-08T22:36:25.857705Z",
+      "agent_execution": {
+        "started_at": "2026-09-08T22:35:34.374154Z",
+        "finished_at": "2026-09-08T22:36:08.754695Z"
+      },
+      "exception_type": null,
+      "trace_signals": {
+        "bash_calls": 3,
+        "complete_trace": true,
+        "assistant_messages": 4,
+        "repeated_bash_calls": 0,
+        "most_repeated_commands": [],
+        "empty_no_tool_responses": 0
+      }
+    }
+  ],
+  "limits": [
+    "One development repetition; no held-out evaluation in this experiment.",
+    "Historical mini scores are not a concurrent control.",
+    "Model, API transport and reasoning/output allowance changed together.",
+    "300s agent timeout, 80 calls, concurrency 2, 1 CPU and 2GB RAM were retained.",
+    "Model alias is recorded; no dated Astra snapshot was listed by the key.",
+    "No optimizer ran; this does not demonstrate an optimizer gain."
+  ]
+}

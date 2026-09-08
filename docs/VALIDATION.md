@@ -2,6 +2,29 @@
 
 Recorded 2026-09-08 on Windows Docker Desktop using Linux containers.
 
+## Flagship baseline
+
+API job `8ef90c0f-134d-4009-918c-0dcc64a92418` completed the 10-task development
+subset with `gpt-6-astra`, Responses, `xhigh` reasoning and a 32,768-token output
+allowance. Original policy unchanged; zero proposals. **7 passed, 3 failed, zero
+runner errors**, in 13m01s. Source equality with the earlier baseline and runnable
+source hashes were checked during export. No scores were adjusted or tasks retried.
+The three failures concern the SSH/webserver workflow, binary extraction near the
+watchdog limit, and exact Nginx log formatting. The report distinguishes observed
+verifier failures from interpretations of their causes.
+
+37 PostgreSQL tests pass. New cases cover native Responses reasoning/phase replay,
+tool-result pairing, context/schema edits, explicit model budgets and rejection of
+incomplete output before tool dispatch. Live protocol probes and positive/negative
+offline sandbox checks passed. The final logging-only request-copy fix was tested
+separately; the benchmark retained its original frozen runtime snapshot.
+The final real Harbor/local-model smoke also passed: run
+`354cf62f-6c81-409c-bdc6-f6897f2f3b74` verified the added-tool dispatch, trace
+collection and sandbox isolation while deliberately leaving its task unsolved.
+
+See [FLAGSHIP_EXPERIMENT.md](FLAGSHIP_EXPERIMENT.md) and
+[flagship-results.json](flagship-results.json) for results and comparison limits.
+
 ## Repeated and held-out code experiment
 
 Experiment `bb881cf2-6f45-4ff3-9149-1031c0e2274f` completed 46 task executions in
@@ -20,7 +43,8 @@ See [EXPERIMENT_RESULTS.md](EXPERIMENT_RESULTS.md) for the review process,
 per-task outcomes, timings, usage and limitations, and
 [code-experiment-results.json](code-experiment-results.json) for the actual code
 and structured record. The updated API/worker are running, `/health` returns ok,
-the API queue has no active jobs, and no task containers remain.
+the API queue had no active jobs, and no task containers remained at the end of
+that experiment.
 
 ## Python code optimization extension
 
@@ -28,7 +52,7 @@ The optimizer now changes the complete agent policy module: tool definitions,
 dispatch, context handling, helper functions, prompt and the agent loop. The
 runtime/model configuration and benchmark remain service-controlled.
 
-- 32 PostgreSQL tests pass, including preservation of invalid code proposals and
+- 37 PostgreSQL tests pass, including preservation of invalid code proposals and
   the best version, source diffs, validation results, tool-message pairing, static
   checks that never execute proposed code, and independent trace preservation.
   Additional checks cover trace observations, fixed comparison settings, alternating
@@ -93,7 +117,8 @@ No benchmark/preflight containers remained after completion.
 A follow-up adds runtime metadata (calls, tokens, stop reason) and passing-task
 context to optimizer input, and asks it to ground changes in concrete recorded
 evidence. It passed the 24-test suite and was deployed after the job finished.
-No subsequent live benchmark has measured that feedback change's effectiveness.
+The later controlled comparison above evaluated a reviewed proposal using the
+enriched feedback; it did not isolate the effect of the feedback change itself.
 
 The historical measurements below belong to the earlier prompt-only implementation.
 

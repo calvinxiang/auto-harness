@@ -23,7 +23,7 @@ acceptance decisions in PostgreSQL.
 - Operator evaluation tool for reviewed proposals, repeated comparisons and a
   separate held-out set, with frozen source hashes and resumable run checkpoints.
 
-Validation: 32 PostgreSQL tests pass, including the actual test client over live
+Validation: 37 PostgreSQL tests pass, including the actual test client over live
 HTTP with deterministic execution fixtures. A real Harbor/Docker task smoke passes,
 verifying runtime execution, trace capture, verifier integration and denial of Docker
 API access without client certificates. The smoke executes an added tool and its
@@ -49,10 +49,19 @@ and usage are in docs/EXPERIMENT_RESULTS.md and docs/code-experiment-results.jso
 This reviewed experiment is separate from the automatic API loop and does not
 change an existing job's history or best version. No reliable general gain is claimed.
 
+A subsequent baseline with GPT-6 Astra and extra-high reasoning passed **7/10** in
+13m01s, with zero runner errors and no optimizer proposals. The original policy
+was unchanged; new Responses transport preserves reasoning/phase history and
+rejects incomplete model output. Model, transport and reasoning/output allowance
+changed together, so this is not a model-only ablation. Historical mini baselines
+scored 4/10, 1/10 and 1/10. Three failures remain, with per-task analysis and exact
+frozen source in docs/FLAGSHIP_EXPERIMENT.md and docs/flagship-results.json.
+
 E2B integration, optimization of service/runtime infrastructure,
 statistical promotion rules and production-grade VM isolation are outside this implementation.
 
 Review links: [setup and design](https://github.com/calvinxiang/auto-harness/blob/feat/agent-optimization-service/README.md),
 [experiment report](https://github.com/calvinxiang/auto-harness/blob/feat/agent-optimization-service/docs/EXPERIMENT_RESULTS.md),
 [generated code and structured results](https://github.com/calvinxiang/auto-harness/blob/feat/agent-optimization-service/docs/code-experiment-results.json),
+[flagship baseline](https://github.com/calvinxiang/auto-harness/blob/feat/agent-optimization-service/docs/FLAGSHIP_EXPERIMENT.md),
 [validation record](https://github.com/calvinxiang/auto-harness/blob/feat/agent-optimization-service/docs/VALIDATION.md).

@@ -57,6 +57,9 @@ def main():
     os.environ['OPENAI_BASE_URL'] = f'http://{address}:{server.server_port}/v1'
     os.environ['OPENAI_API_KEY'] = 'test-sandbox-key'
     os.environ['AGENT_MODEL'] = 'fixture'
+    os.environ['AGENT_API'] = 'chat_completions'
+    os.environ['AGENT_REASONING_EFFORT'] = ''
+    os.environ['AGENT_MAX_OUTPUT_TOKENS'] = '4096'
     # Standalone smoke jobs have no database lease. Keep their artifacts outside
     # the production worker's stale-job sweep while the live service is running.
     os.environ['ARTIFACTS_DIR'] = '/artifacts/smoke'
