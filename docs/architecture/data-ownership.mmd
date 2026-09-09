@@ -1,0 +1,65 @@
+erDiagram
+    organizations ||--o{ memberships : has
+    users ||--o{ memberships : joins
+    organizations ||--o{ harness_versions : scopes
+    organizations ||--o{ experiments : scopes
+    organizations ||--o{ jobs : scopes
+    harness_versions o|--o{ harness_versions : parent
+    experiments ||--|{ experiment_trials : plans
+    harness_versions ||--o{ experiment_trials : evaluates
+    jobs ||--o| experiment_trials : backs
+    jobs ||--o{ iterations : records
+    jobs ||--o| execution_reservations : reserves
+
+    users {
+        uuid id PK
+        text token_hash UK
+    }
+    organizations {
+        uuid id PK
+    }
+    memberships {
+        uuid org_id PK,FK
+        uuid user_id PK,FK
+        text role
+    }
+    harness_versions {
+        uuid id PK
+        uuid user_id FK
+        uuid parent_id FK
+        jsonb package
+        text source_sha256
+    }
+    experiments {
+        uuid id PK
+        uuid user_id FK
+        jsonb request
+        text status
+    }
+    experiment_trials {
+        uuid experiment_id PK,FK
+        uuid version_id PK,FK
+        text split PK
+        int repetition PK
+        text task_id PK
+        uuid job_id FK,UK
+    }
+    jobs {
+        uuid id PK
+        uuid user_id FK
+        jsonb request
+        uuid claim_token
+        timestamptz lease_until
+    }
+    iterations {
+        uuid id PK
+        uuid job_id FK
+        int number
+        int attempt
+        jsonb results
+    }
+    execution_reservations {
+        uuid claim_token PK
+        uuid job_id FK,UK
+        int slots
+    }

@@ -1,0 +1,40 @@
+flowchart LR
+    Client["Client<br/>HTTP / Python client"]
+    API["FastAPI<br/>authorize, submit, report"]
+    DB[("PostgreSQL<br/>state + queue + capacity")]
+    Provider["Inference provider<br/>optimizer + task agent"]
+
+    subgraph Worker["Worker containers x2 - trusted controller"]
+        Control["Queue + optimizer + search controller<br/>leases, watchdog, reaper"]
+        Harbor["Harbor subprocess<br/>installed-agent bridge"]
+    end
+    Cache[("Shared task cache<br/>lock + staged rename")]
+    Artifacts[("Private artifacts<br/>source, traces, results")]
+    subgraph Execution["Dedicated Docker-in-Docker engine - privileged"]
+        Engine["Docker daemon"]
+        Preflight["Offline preflight<br/>no network or credentials"]
+        Task["TerminalBench container<br/>runtime + editable package<br/>agent, then verifier"]
+    end
+
+    Client -->|"HTTP :8080"| API
+    API -->|"SQL"| DB
+    Control -->|"claim / checkpoint"| DB
+    Control -->|"proposal"| Provider
+    Control -->|"launch"| Harbor
+    Control -->|"mTLS: preflight / cleanup"| Engine
+    Harbor -->|"mTLS: task lifecycle"| Engine
+    Harbor --> Cache
+    Engine --> Preflight
+    Engine --> Task
+    Task -->|"inference"| Provider
+    Harbor <-->|"files / evidence"| Artifacts
+    Task -->|"own log mounts"| Artifacts
+
+    classDef controller fill:#e8f1ff,stroke:#42638f,color:#172c46
+    classDef data fill:#e9f6f0,stroke:#3c7862,color:#183b30
+    classDef sandbox fill:#fff4df,stroke:#98713a,color:#503719
+    classDef external fill:#f2edfa,stroke:#786295,color:#37284c
+    class API,Control,Harbor controller
+    class DB,Cache,Artifacts data
+    class Engine,Preflight,Task sandbox
+    class Client,Provider external

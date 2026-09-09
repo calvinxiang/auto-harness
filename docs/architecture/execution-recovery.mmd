@@ -1,0 +1,54 @@
+sequenceDiagram
+    autonumber
+    actor C as Client
+    participant A as FastAPI
+    participant D as PostgreSQL
+    participant W as Worker pool
+    participant E as Harbor / Docker execution
+
+    C->>A: POST experiment + Idempotency-Key
+    A->>D: Authorize versions, check quota and matching runtime hashes
+    A->>D: Atomically insert frozen plan, trial links and queued jobs
+    D-->>A: Commit
+    A-->>C: 202 + experiment ID
+    Note over C,D: Duplicate key + same request returns existing experiment
+
+    W->>D: Lock pool row and claim eligible job with SKIP LOCKED
+    D-->>W: New token + 90s lease + reserved slot (one transaction)
+    W->>D: Save iteration attempt with frozen source and hash
+    W->>E: Offline preflight, then launch task from saved source
+    Note over D,E: No DB transaction spans preflight, inference or benchmarking
+    Note over D,W: Heartbeat every 10s, separate watchdog signals stop<br/>before the last known lease expires if renewal blocks
+
+    alt Attempt finishes normally
+        E-->>W: Task result, verifier reward and execution evidence
+        W->>D: Fenced commit of iteration result and terminal child status
+        W->>E: Confirm scoped cleanup for this attempt
+        E-->>W: Cleanup succeeded
+        W->>D: Release reservation
+    else Worker A dies before result commit
+        Note over D,E: Remote task may survive, reservation remains<br/>Expired token cannot commit results
+        W->>D: Worker B reaper finds expired lease + 60s grace
+        W->>E: Remove containers scoped to old job / claim token
+        alt Cleanup fails (engine unavailable)
+            Note over D,W: Keep reservation, no reclaim of this job<br/>A later worker sweep retries cleanup
+        else Cleanup succeeds
+            E-->>W: Old attempt's containers removed
+            W->>D: Release old reservation
+            W->>D: Reclaim if attempts remain, new token + reservation<br/>Mark prior running iteration interrupted
+            D-->>W: Same job and saved source, completed history retained
+            W->>E: Preflight and retry in a fresh sandbox
+            E-->>W: Result and execution evidence
+            W->>D: Fenced result commit
+            W->>E: Confirm scoped cleanup
+            E-->>W: Cleanup succeeded
+            W->>D: Release reservation
+        end
+    end
+
+    Note over D,W: Repeat for remaining trials, held-out waits until<br/>all development jobs are terminal, including failures
+    W->>D: Reconcile ready parent after work and during maintenance
+    C->>A: GET experiment / linked jobs / iterations
+    A->>D: Authorize, reconcile requested parent, read report/history
+    D-->>A: Status, per-version summaries, regressions and attempts
+    A-->>C: Results or current progress

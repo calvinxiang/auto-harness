@@ -1,0 +1,23 @@
+flowchart TB
+    Run["POST optimization-runs<br/>freeze plan and execution profile"]
+    Base["Initial baseline experiment"]
+    Propose["Independent proposals from incumbent<br/>tools / context / skills / control"]
+    Compare["Comparison experiment<br/>fresh incumbent + valid candidates"]
+    Decide["Persist round decision<br/>strict gain with no paired regressions"]
+    Final["Freeze selection<br/>optional final development + held-out checks"]
+    Report["Final report<br/>versions, decisions and complete history"]
+
+    Run --> Base
+    Base -->|"development not all-pass"| Propose
+    Base -->|"all-pass"| Final
+    Propose -->|"validated candidates"| Compare
+    Propose -->|"all invalid: retain incumbent"| Decide
+    Compare --> Decide
+    Decide -->|"another round allowed"| Propose
+    Decide -->|"all-pass / round cap / patience"| Final
+    Final --> Report
+
+    classDef state fill:#e8f1ff,stroke:#42638f,color:#172c46
+    classDef execution fill:#fff4df,stroke:#98713a,color:#503719
+    class Run,Decide,Report state
+    class Base,Propose,Compare,Final execution
