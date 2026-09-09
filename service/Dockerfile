@@ -13,13 +13,13 @@ RUN python -m venv /opt/harbor && /opt/harbor/bin/pip install --no-cache-dir -r 
 FROM base AS api
 COPY service /app/service
 COPY tests /app/tests
-COPY test_client.py experiment_client.py /app/
+COPY test_client.py experiment_client.py optimization_client.py /app/
 COPY agent/templates/terminal_bench.py /app/agent/templates/terminal_bench.py
 CMD ["uvicorn", "service.api:app", "--host", "0.0.0.0", "--port", "8000"]
 
 FROM worker-deps AS worker
 COPY service /app/service
 COPY tests /app/tests
-COPY test_client.py experiment_client.py /app/
+COPY test_client.py experiment_client.py optimization_client.py /app/
 COPY agent/templates/terminal_bench.py /app/agent/templates/terminal_bench.py
 CMD ["python", "-m", "service.worker"]

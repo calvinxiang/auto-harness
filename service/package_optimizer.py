@@ -8,14 +8,16 @@ from .optimizer import OptimizationError
 from .runner import redact
 
 
-def propose_package(parent, dimension, evidence, execution, review_feedback=None):
+def propose_package(parent, dimension, evidence, execution, review_feedback=None, history=None):
     cfg = settings()
     guidance = {
         'tools': 'Change tool schemas, structured results, dispatch or tool composition. Preserve baseline context handling, skills and stopping policy verbatim.',
         'context': 'Change working memory, context selection or compaction while preserving complete tool groups and the task. Preserve baseline tools, dispatch and stopping policy verbatim.',
         'skills': 'Add a reusable skill with a Markdown procedure and optional script/resource. Implement actual skill discovery/loading/use in the agent. Preserve baseline tools, context handling and stopping policy verbatim. A skill must not be only an unused file.',
+        'control': 'Change agent control flow: planning, execution, recovery, verification or termination decisions. Use an explicit general state/protocol if useful. Preserve unrelated tool schemas, skill assets and context selection. Completion checks must use real observed evidence; a successful command alone does not prove task correctness. Do not whitelist task-specific commands or hardcode task solutions.',
     }[dimension]
     context = {'parent_package': parent, 'dimension': dimension, 'review_feedback': review_feedback,
+               'prior_rounds': history or [],
                'evidence': [{k: t.get(k) for k in ('task_id', 'status', 'failure_summary', 'agent_metadata', 'trace_signals')}
                             | {'trace': t.get('trace', '')[-8000:]} for t in evidence[:20]]}
     instruction = (

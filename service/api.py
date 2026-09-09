@@ -197,3 +197,6 @@ def cancel(org_id: UUID, job_id: UUID, user: User):
 
 from .campaign_api import register as register_campaigns
 register_campaigns(app, User, membership, visible_job)
+
+from .search_api import register as register_searches
+register_searches(app, User, membership)

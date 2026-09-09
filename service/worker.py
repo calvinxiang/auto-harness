@@ -13,7 +13,7 @@ from .config import settings, execution_config
 from .db import connect
 from .optimizer import propose
 from .runner import HarborRunner, cleanup
-from . import campaigns
+from . import campaigns, searches
 from .packages import package_snapshot
 from .package_optimizer import propose_package
 
@@ -27,7 +27,8 @@ def process_proposal(job, runner, stop, optimizer=propose_package):
     output = job.get('output') or {}
     if 'proposal' not in output:
         args = (parent['package'], job['request']['dimension'], output.get('evidence', []), job['request']['execution'])
-        output['proposal'] = optimizer(*args, review_feedback=job['request'].get('review_feedback'))
+        output['proposal'] = optimizer(*args, review_feedback=job['request'].get('review_feedback'),
+                                       history=output.get('search_history'))
         queue.record_output(job, output)  # Retry reuses the proposal after this checkpoint.
     proposal = output['proposal']
     # Store an immutable version even when its dynamic contract fails, for review.
@@ -203,6 +204,7 @@ def main():
     while not shutdown.is_set():
         try:
             reap_stale_runs()
+            searches.advance_one()
             job = queue.claim()
             if job:
                 log.info('Claimed job %s attempt %s', job['id'], job['attempts'])

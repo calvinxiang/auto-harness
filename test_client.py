@@ -89,7 +89,10 @@ def main():
 
 if __name__ == '__main__':
     try:
-        if '--experiment' in sys.argv:
+        if '--optimize' in sys.argv:
+            sys.argv.remove('--optimize')
+            from optimization_client import main
+        elif '--experiment' in sys.argv:
             sys.argv.remove('--experiment')
             from experiment_client import main
         sys.exit(main())

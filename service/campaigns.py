@@ -33,12 +33,12 @@ def profile_execution(profile):
 class VersionCreate(Input):
     label: str = Field(min_length=1, max_length=100)
     parent_id: UUID | None = None
-    dimension: Literal['baseline', 'tools', 'context', 'skills', 'mixed'] = 'baseline'
+    dimension: Literal['baseline', 'tools', 'context', 'skills', 'control', 'mixed'] = 'baseline'
     package: HarnessPackage | None = None
 
 
 class ProposalCreate(Input):
-    dimension: Literal['tools', 'context', 'skills']
+    dimension: Literal['tools', 'context', 'skills', 'control']
     evidence_job_ids: list[UUID] = Field(default_factory=list, max_length=20)
     review_feedback: str | None = Field(default=None, max_length=4000)
 
@@ -81,7 +81,7 @@ def insert_version(conn, org_id, user_id, label, dimension, snapshot, parent_id=
          snapshot['source_sha256'], Jsonb(snapshot['changes']), Jsonb(proposal) if proposal else None)).fetchone()
 
 
-def submit_experiment(conn, org_id, user, role, body, key):
+def submit_experiment(conn, org_id, user, role, body, key, *, execution=None):
     request = body.model_dump(mode='json')
     # Shared org row also serializes duplicate submissions and quota admission.
     conn.execute('SELECT id FROM organizations WHERE id=%s FOR UPDATE', (org_id,))
@@ -101,7 +101,7 @@ def submit_experiment(conn, org_id, user, role, body, key):
     exp = conn.execute('''INSERT INTO experiments(id,org_id,user_id,name,request,idempotency_key)
                            VALUES(%s,%s,%s,%s,%s,%s) RETURNING *''',
                        (uuid4(), org_id, user['id'], body.name, Jsonb(request), key)).fetchone()
-    execution = profile_execution(body.profile)
+    execution = execution or profile_execution(body.profile)
     for split, tasks, repeats in [('development', body.development_task_ids, body.repetitions),
                                   ('heldout', body.heldout_task_ids, 1)]:
         for repetition in range(repeats):
