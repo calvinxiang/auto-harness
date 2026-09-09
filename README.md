@@ -10,6 +10,10 @@ The original harness is preserved. Its documentation is in
 [docs/UPSTREAM_README.md](docs/UPSTREAM_README.md). The service is separate from
 the original `prepare.py` / `gating.py` command-line workflow.
 
+Start with the [architecture and recovery diagrams](docs/ARCHITECTURE.md),
+[automatic search workflow](docs/AUTOMATIC_OPTIMIZATION.md), and
+[measured worker failure drill](docs/OPERATIONS.md) for a review of the design.
+
 ## Setup and run
 
 Requirements: Docker Desktop in Linux-container mode with Compose, Python 3.12+
@@ -398,6 +402,14 @@ fixed, supports one sandbox backend and OpenAI Chat Completions/Responses infere
 and uses operator token provisioning rather than SSO. Live LLM validation exercised
 the full loop with code changes and rejection of an unsuccessful candidate. E2B is a natural
 future backend, but is not claimed as tested.
+
+| Assignment milestone | Implementation and evidence |
+|---|---|
+| 1. HTTP API and structured results | FastAPI schemas, task outcomes/failure summaries, OpenAPI, and all three clients tested over real HTTP. |
+| 2. Asynchronous processing | PostgreSQL queue, separate workers, durable status, idempotency, leases, retries and checkpoint recovery. |
+| 3. Sandbox execution | Real TerminalBench tasks through Harbor in separate Docker containers; scoped cleanup, resource limits and a measured worker-failure drill. |
+| 4. Iterative optimization and history | Original code loop plus automatic multi-file package search; frozen versions, all proposals/round decisions/task attempts, bounded stopping and final held-out checks. |
+| 5. Multiple organizations and roles | Organization membership, administrator/member permissions, ownership checks on jobs, versions, proposals, experiments and searches; cross-tenant tests. |
 
 With more time: larger repeated evaluation sets, statistical acceptance criteria, spend
 accounting/budgets, stronger weighted fairness and model-rate admission, transient
