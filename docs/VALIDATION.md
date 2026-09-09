@@ -11,6 +11,27 @@ Earlier test counts below describe their historical checkpoints.
 
 Recorded 2026-09-08 on Windows Docker Desktop using Linux containers.
 
+## Automatic package search and final deployment
+
+Run `caab9717-1377-4def-afeb-0a23bdc357f0` completed six proposals, two rounds and
+24 real trials in 60m54s, with one attempt per trial. Round one selected control
+at 1/2 versus a fresh baseline at 0/2. Round two tied at 1/2 and retained it.
+Final development confirmation returned 0/2 for both versions; both passed the
+single designated held-out task. The initial gain did not reproduce.
+
+The full export verifies all seven packages' hashes/embedded assets, independently
+recomputes both selections and checks parent/evidence lineage and held-out timing.
+Actual requests and skill events confirm mechanism execution. Supervisor records
+show 14 normal exits, one timeout exit (124) and nine killed exits (137); stale
+agent metadata is retained, not mistaken for normal completion. See
+[AUTOMATIC_OPTIMIZATION_RESULTS.md](AUTOMATIC_OPTIMIZATION_RESULTS.md).
+
+After the run, the API and both workers were recreated with the tested controller
+failure isolation at `c14b329`. Their source hashes match the checkout; health
+returned `ok`. Resuming `test_client.py --optimize` returned an identical complete
+report. No active jobs, task reservations or task containers remained before
+deployment. The 67-test suite and CI passed; no benchmark retry was added.
+
 ## Package experiment and final deployment
 
 Experiment `b8786371-fef7-4617-9736-339126965685` completed 36 real task trials

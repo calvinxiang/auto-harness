@@ -85,8 +85,10 @@ its candidates. A candidate is eligible only if its mean reward is strictly
 higher than the incumbent in this comparison and no paired previously passing
 task/repetition fails. The highest eligible score wins; a tie keeps the first
 candidate in the persisted plan order. This is a conservative heuristic, not a
-statistical significance test. The score shown for the incumbent is its latest
-measurement, not the maximum favorable score seen in previous runs.
+statistical significance test. The run's `best_score` is the incumbent's latest
+measurement used for selection, not the maximum favorable score seen in previous
+rounds. Final confirmation and held-out scores are reported separately and do not
+overwrite that frozen selection score.
 
 Rejected and invalid proposals stay in history. A failed candidate evaluation is
 ineligible; other candidates can still be compared. If the reference evaluation
@@ -129,3 +131,7 @@ proposals, frozen settings, controller rollback/concurrency, cancellation and
 held-out exclusion. The client test uses real HTTP and retrieves/resumes the full
 multi-round history with fixture inference. These establish service behavior;
 live model outcomes are reported separately.
+
+The [completed live search](AUTOMATIC_OPTIMIZATION_RESULTS.md) records six proposals,
+two rounds and 24 real trials. Its search gain did not repeat in final confirmation;
+the report preserves that result, interrupted executions and the full history.

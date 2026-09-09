@@ -1,5 +1,11 @@
 # Handoff for the architecture chat
 
+Completed integration, 2026-09-08: `docs/ARCHITECTURE.md` and four standalone
+diagrams are published on PR #32. Automatic search and controller failure isolation
+are deployed; 67 tests pass. The live run completed two rounds and 24 trials.
+Read `docs/AUTOMATIC_OPTIMIZATION_RESULTS.md` for the final results and `HANDOFF.md`
+for current state. The brief below is historical; do not restart its completed work.
+
 The user is working on a take-home Agent Optimization Service. The interviewer
 asked: "i see. would love to see a design of your arch as well whenever you have
 it ready". The user has about two hours remaining and wants architecture work in
@@ -9,8 +15,8 @@ this chat while the original chat owns agent development and benchmark runs.
 
 Coordination update: automatic multi-round package optimization is now implemented
 and deployed (`service/searches.py`, `service/search_api.py`, migration 005), with
-66 passing tests. Read `docs/AUTOMATIC_OPTIMIZATION.md`. A bounded live run is in
-progress; HANDOFF.md has its ID/state. Include this layer in the architecture:
+67 passing tests. Read `docs/AUTOMATIC_OPTIMIZATION.md`. The bounded live run is
+complete; HANDOFF.md has its ID/state. The architecture includes this layer:
 workers advance transactional search states between jobs; they schedule baseline,
 proposal and comparison jobs, select a development winner, repeat within limits,
 then run optional final checks. No extra broker/scheduler process was added.

@@ -112,6 +112,9 @@ checks run only after selection stops. Choose up to three mutation dimensions
 from tools, context, skills and control flow. Model and resource settings remain
 fixed within the run. See [the automatic workflow](docs/AUTOMATIC_OPTIMIZATION.md)
 for smaller diagnostic runs, stopping rules, cancellation and complete history.
+The [completed automatic run](docs/AUTOMATIC_OPTIMIZATION_RESULTS.md) records six
+proposals, two rounds and 24 real trials, including the failed final confirmation
+of an initially promising candidate.
 
 ## Compare tools, context and skills
 
@@ -158,6 +161,13 @@ SHA-256 hashes are stored in PostgreSQL. Provisioning returns a token once.
 | `GET /organizations/{org}/jobs/{job}` | Status, best score/version and stop reason |
 | `GET /organizations/{org}/jobs/{job}/iterations` | Full ordered history including rejected/interrupted attempts |
 | `POST /organizations/{org}/jobs/{job}/cancel` | Owner or admin; idempotent cancellation |
+| `POST /organizations/{org}/optimization-runs` | Member/admin; returns **202** with a frozen automatic-search plan |
+| `GET /organizations/{org}/optimization-runs` | Admin sees all; member sees own; bounded list |
+| `GET /organizations/{org}/optimization-runs/{run}` | Rounds, proposals, decisions and linked trial experiments |
+| `POST /organizations/{org}/optimization-runs/{run}/cancel` | Owner or admin; fence unfinished children and preserve history |
+
+Harness-version, proposal and standalone-experiment routes are documented in
+[EXPERIMENT_PLATFORM.md](docs/EXPERIMENT_PLATFORM.md).
 
 Example submission:
 
@@ -175,8 +185,9 @@ describes request and response schemas.
 
 `Idempotency-Key` makes concurrent retries return the same job for the same user
 and organization; reuse with a changed body returns 409. Each organization may
-have at most 10 queued/running non-trial jobs and three active experiments (429
-thereafter). Trial admission uses a shared sandbox capacity pool. Missing/invalid tokens return
+have at most 10 queued/running non-trial jobs, three active experiments and one
+active optimization run (429 thereafter). Trial admission uses a shared sandbox
+capacity pool. Missing/invalid tokens return
 401, unauthorized admin operations return 403, and inaccessible jobs/organizations
 return 404 to avoid leaking their existence.
 
@@ -204,9 +215,9 @@ and long scientific builds. Runs use two concurrent tasks, 1 CPU and 2 GB RAM pe
 task, 80 agent steps, 120 seconds per bash command and a **300-second agent budget**.
 An iteration has a one-hour outer deadline including downloads/setup/verification.
 Ten tasks have about 25 minutes of maximum agent execution at concurrency two,
-plus overhead. Observed full-subset iterations took **7m27s to 9m13s** in the
-recorded local runs. The latest baseline, code proposal and rerun took **17m12s**
-end-to-end. These measurements are machine/model dependent.
+plus overhead. Earlier mini iterations took **7m27s to 9m13s**; the recorded mini
+baseline, code proposal and rerun took **17m12s** end-to-end. The later Astra
+baseline took **13m01s**. These measurements are machine/model dependent.
 
 The original task budgets are 900 seconds. Shorter service budgets and resource
 overrides make this a local optimization experiment, not a leaderboard submission.
@@ -387,6 +398,14 @@ Actual requests confirm structured tool results, output compaction and skill
 loading, but no pass-rate improvement. Exact packages, six proposal attempts,
 per-task history and evaluation limits are in
 [docs/PACKAGE_EXPERIMENT.md](docs/PACKAGE_EXPERIMENT.md).
+
+The automatic package search then completed **24 trials and six proposals in
+60m54s**. It selected a control change at **1/2 vs 0/2** on two development failure
+cases, retained it after second-round ties, and stopped at its round limit. Final
+confirmation was **0/2 for both versions**; both passed **1/1** designated held-out
+task. The gain did not reproduce. All task attempts, source hashes, decisions,
+actual mechanism use and interrupted process exits are retained in
+[docs/AUTOMATIC_OPTIMIZATION_RESULTS.md](docs/AUTOMATIC_OPTIMIZATION_RESULTS.md).
 
 An earlier prompt-only run scored 1/10 then 4/10, with rejection due to a regression.
 See

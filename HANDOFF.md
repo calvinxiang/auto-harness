@@ -1,46 +1,67 @@
 # Agent optimization service handoff
 
-Current snapshot: 2026-09-08. Implementation, live package comparison and final
-local deployment are complete. This file supersedes the earlier chronological
-notes, preserved locally in workspace/handoff-history-before-package-completion.md.
+Current snapshot: 2026-09-08, Toronto. Implementation, automatic live validation,
+architecture and local deployment are complete. This file supersedes earlier
+chronological notes in workspace/handoff-history-before-package-completion.md.
 
-## Two-chat coordination
+## Current completion state
 
-Active work after the user's correction: do not run a Terra comparison; that was
-only an interviewer question. No Terra benchmark was submitted. Automatic
-multi-round package optimization is implemented and deployed at local checkpoint
-`46e7d4c`: `service/searches.py`, `service/search_api.py`, migration 005, and
-`test_client.py --optimize` / `optimization_client.py`. All 66 tests pass, including
-real HTTP client/resume and two-round selection with rejection of regressions.
-Read `docs/AUTOMATIC_OPTIMIZATION.md`. The architecture chat should include this
-implemented layer before finalizing; older statements about no package search
-describe the earlier `ce5bd08` checkpoint. Standalone experiments still do not
-select a winner; optimization runs select their internal next parent automatically.
+The user redirected work away from Terra comparisons toward the full assignment.
+No Terra benchmark was submitted. All five milestone paths are implemented:
+HTTP API, durable workers, Docker sandbox execution, iterative full-package
+optimization/history, and organization roles. Read README.md and
+`docs/ARCHITECTURE.md` first. The architecture chat contributed commit `ba98287`;
+README/PR integration followed in `597f836`. PR: https://github.com/neosigmaai/auto-harness/pull/32.
 
-LIVE RUN: caab9717-1377-4def-afeb-0a23bdc357f0, organization
-b10dc6fe-59b0-4b6b-885a-18e2c6444287. Started about 20:10 Toronto. Client session
-59328. Resume state `workspace/automatic-package-state.json`, final output
-`workspace/automatic-package-results.json`. Do not recreate workers during this
-run. Development tasks configure-git-webserver/extract-elf, one repetition;
-dimensions context/skills/control, max_rounds=2, patience=2; final held-out task
-large-scale-text-editing. At most six proposals and 24 trials, including the
-explicit final development confirmation before held-out evaluation. Astra
-Responses xhigh/32768, GPT-5.4 medium optimizer; no model changes. Runtime and
-initial package are the same frozen version used in the earlier experiment.
-No live outcome is claimed yet. Remaining: inspect automatic decisions/results,
-export a sanitized full report, integrate docs/PR and verify final CI.
-Post-checkpoint hardening isolates a malformed controller state to its own run,
-cancels its unfinished children and lets ordinary work continue. 67 tests pass;
-new images are built but must be deployed only after the live run finishes.
+Automatic multi-round search: `service/searches.py`, `service/search_api.py`,
+migration 005, `optimization_client.py` / `test_client.py --optimize`. Source
+hardening at `c14b329` is deployed to the API and both workers. Their source hashes
+match the tested checkout; health is ok. The 67-test suite passes. No jobs,
+reservations or task containers remained before deployment. Client resume after
+restart returned an identical complete report. Check PR CI for the latest docs commit.
 
-The user has about two hours left and wants a separate chat to document the
-architecture while this original chat owns agent work and benchmark scheduling.
-Read `docs/ARCHITECTURE_HANDOFF.md` for the architecture brief and source map.
-That chat owns `docs/ARCHITECTURE.md` and `docs/architecture/` assets; this chat
-integrates shared README/PR edits and manages the running deployment. Avoid branch
-switches and broad Git staging in the shared checkout. At this handoff, all prior
-benchmarks have finished and no jobs are queued/running. Published checkpoint
-`ce5bd08` is on PR #32 and its GitHub CI passed.
+## Completed automatic run
+
+Run `caab9717-1377-4def-afeb-0a23bdc357f0`, org
+`b10dc6fe-59b0-4b6b-885a-18e2c6444287`, completed 24 trials and six proposals
+in 60m54s, each trial once. 2026-09-09 00:13:48 to 01:14:42 UTC. Development:
+configure-git-webserver/extract-elf, one repetition; dimensions context/skills/control;
+max_rounds=2, patience=2. Final held-out: large-scale-text-editing. Agent Astra
+Responses xhigh/32768; optimizer GPT-5.4 medium. Runtime and initial package are
+identical to the earlier package experiment. The live controller used `46e7d4c`;
+error-isolation hardening was deployed only after completion.
+
+Round one selected control version `a59373ef-f6fc-4184-b42e-333e48d9f2bc` at 1/2
+against a fresh baseline at 0/2; context/skills were 0/2. All round-two versions
+scored 1/2, so the service retained the parent and stopped at max_rounds. FINAL
+CONFIRMATION: baseline 0/2, selected 0/2. HELD-OUT: both 1/1. The apparent gain did
+not reproduce; do not claim a reliable improvement or recommend promotion.
+
+Public report: `docs/AUTOMATIC_OPTIMIZATION_RESULTS.md` and
+`docs/automatic-optimization-results.json`. Independent audits verify all seven
+packages' hashes/embedded assets, recompute both selections, verify parent/evidence
+lineage and prove held-out jobs started after final development completed.
+Supervisor exits: 14 normal, one 124 timeout, nine 137 killed. The nine killed
+processes retained stale running metadata; their ~305s timing is consistent with
+deadline escalation, but exit 137 alone does not identify the sender. The legacy
+watchdog_timeout flag only identifies exit 124; false does not exclude escalation.
+
+A static audit found excess escaping in the first control gate's regexes. Its
+reminders did fire in actual requests, including on failures. The second control
+candidate's new audit branch was absent from both live trials, although the
+offline fixture passed; both live executions ended with 137. No manual candidate
+edits, scored reruns or post-hoc score adjustments were made. The two context
+variants used summaries/history pruning, and skills loaded in all four skill trials.
+
+Private resume/report files: `workspace/automatic-package-state.json`,
+`workspace/automatic-package-results.json`, `workspace/automatic-package-after-deploy.json`.
+The client session has finished. `workspace/monitor_automatic.py` reads current state;
+`inspect_automatic.py` reads worker artifacts; `export_automatic_report.py` checks
+hashes/decisions/splits and exports; `summarize_automatic.py` aggregates metrics.
+Do not print .env or workspace/client-*.json credentials. User most recently asked
+for a message explaining learnings; a draft was provided, followed by the final
+confirmation result. Main takeaway: self-checks and promising small-sample gains
+can fail independent verification; preserve actual behavior, outcomes and failures.
 
 ## Objective and user direction
 
@@ -64,10 +85,12 @@ Do not ask again for routine continuation or publication of this work.
 - Shared task-slot admission, reservations retained until scoped cleanup, independent
   lease watchdog, cancellation, retry fencing and periodic parent reconciliation.
 - Harbor shared cache uses cross-process locking and atomic staged publication.
-- Original iterative /jobs optimization loop still proposes single-module changes
-  and stops on strict no-regression rejection or its iteration limit. Package
-  experiments explore independent candidates; no automatic package promotion.
-- Resumable test_client.py --experiment and operator artifact inspection.
+- Original iterative /jobs optimization loop proposes single-module changes and
+  stops on strict no-regression rejection or its iteration limit. Standalone
+  experiments report independent candidates. Automatic optimization runs select
+  their next package parent across rounds and preserve every decision; selection
+  does not change deployment defaults or other experiments.
+- Resumable test_client.py --experiment / --optimize and operator artifact inspection.
 - One Docker engine and shared artifact volume; no multi-host/HA, E2B provider,
   scoped inference proxy, statistical promotion or production VM isolation.
 

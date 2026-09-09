@@ -13,12 +13,13 @@ measuring it**. Tools, context management, skills and agent control flow are
 editable. Authentication, queue ownership, sandbox resources, benchmark verification
 and the comparison's model profile belong to the controller.
 
-This describes the implemented and deployed architecture at `46e7d4c`, reviewed
+This describes the implemented architecture, including deployed controller
+hardening at `c14b329`, reviewed
 on 2026-09-08. The deployment uses one Docker engine, shared volumes, two workers
 and two globally admitted task slots. [Automatic package search](#automatic-package-search)
 builds on the same durable proposal and experiment primitives. Future scaling is
-separated from implemented behavior; completed benchmark evidence is identified
-separately from the automatic search whose live outcomes are still pending.
+separated from implemented behavior. The [completed automatic search](AUTOMATIC_OPTIMIZATION_RESULTS.md)
+records two rounds and 24 trials; its initial gain did not repeat in final confirmation.
 
 Jump to [deployment](#components-and-deployment), [workflows](#jobs-and-standalone-experiments),
 [recovery](#submission-to-result-including-a-worker-crash),
@@ -380,11 +381,13 @@ completed without failed/cancelled children, not that every task passed.
 
 ## Automatic package search
 
-Automatic package search is implemented and deployed at `46e7d4c`. The recorded
-66-test PostgreSQL suite covers multi-round selection, regression rejection,
-controller recovery and client resume. Its live model evaluation is still in
-progress; the completed operational drill and 36-trial comparison below predate
-this orchestration layer and do not establish its live search outcomes.
+Automatic package search was implemented at `46e7d4c`; subsequent controller
+failure isolation at `c14b329` is deployed. The **67-test PostgreSQL suite** covers
+multi-round selection, regression rejection, controller recovery/failure isolation
+and client resume. Its [live evaluation](AUTOMATIC_OPTIMIZATION_RESULTS.md)
+completed six proposals and 24 trials across two rounds. The initial 1/2 versus
+0/2 gain did not repeat in final confirmation, where both versions scored 0/2.
+Both passed the single designated held-out task.
 
 [`searches.py`](../service/searches.py) adds `/optimization-runs` as a server-driven
 state machine over existing proposal jobs and experiments. It selects the parent
@@ -426,6 +429,10 @@ child IDs. This transition performs no inference and reserves no task slot. Its
 proposal/trial children all pass through the existing pool and lease protocol.
 It may wait for a busy worker or organization quota; there is no separate
 always-running scheduler or wall-clock search deadline.
+
+An unexpected non-database controller error rolls back its transition, fails
+only that run and fences its unfinished children. Database errors can retry;
+controller errors do not prevent workers from claiming ordinary jobs.
 
 | Added record | Relationship and purpose |
 |---|---|
@@ -482,9 +489,10 @@ completed history, cancellation, sandbox interruption and eventual cleanup. Peak
 observed containers/reservations were two and no leftovers remained. Its 30.95-second
 duration used synthetic four-second tasks and shortened leases, so it is evidence
 of recovery correctness, not LLM throughput. The earlier `ce5bd08` checkpoint had
-58 passing PostgreSQL tests and passing CI. The implementation handoff records
-66 passing tests at `46e7d4c`, including the automatic-search integration tests;
-this documentation pass does not rerun the live services or benchmark work.
+58 passing PostgreSQL tests and passing CI. The current suite has 67 passing tests,
+including automatic-search integration and controller failure isolation. After
+the live search, the API and both workers were recreated with the tested source;
+client resume returned an identical complete report. See [VALIDATION.md](VALIDATION.md).
 
 The [recorded package comparison](PACKAGE_EXPERIMENT.md) completed 36 trials in
 30m11s with zero runner errors or worker retries. Traces demonstrate structured
