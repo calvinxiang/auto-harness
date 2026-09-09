@@ -6,6 +6,9 @@ repetitions before execution. Every candidate/task/repetition is a separate job,
 so recovery repeats only an interrupted trial. Completed results remain intact.
 The recorded baseline/tools/context/skills comparison is in
 [PACKAGE_EXPERIMENT.md](PACKAGE_EXPERIMENT.md).
+For automatic multi-round selection and follow-up proposals, use
+[optimization runs](AUTOMATIC_OPTIMIZATION.md). The standalone experiments
+described here retain their independent comparison behavior.
 
 ## Run the complete workflow
 

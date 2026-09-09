@@ -1,6 +1,8 @@
 # Validation record
 
-Latest platform checks: **58 PostgreSQL tests pass**, including experiment
+Latest platform checks: **67 PostgreSQL tests pass**, including automatic multi-round
+package selection, controller rollback/concurrency and failure isolation, the
+resumable optimization client over real HTTP, and experiment
 ownership/idempotency, held-out gating, immutable package recovery, capacity
 admission and cleanup failures. Real offline Docker checks load Python helpers
 and skill assets. Four worker processes under two slots passed the crash,

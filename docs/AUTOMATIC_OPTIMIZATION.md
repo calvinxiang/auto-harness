@@ -56,6 +56,9 @@ both roll back. After commit, another controller sees the same child IDs. The
 controller never waits for a model and never reserves a sandbox slot. Advancement
 may wait until a busy worker finishes its current task; this implementation has
 no separate always-running scheduler or wall-clock search deadline.
+An unexpected non-database controller error fails only its run and fences its
+unfinished children, with a sanitized error and retained history. Database errors
+can retry; controller failures do not prevent workers from claiming ordinary jobs.
 
 Task/proposal execution retains the existing leases, heartbeat watchdog,
 checkpoint reuse, retry fencing and cleanup-before-capacity-release rules. A

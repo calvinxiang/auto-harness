@@ -204,7 +204,10 @@ def main():
     while not shutdown.is_set():
         try:
             reap_stale_runs()
-            searches.advance_one()
+            try:
+                searches.advance_one()
+            except Exception as exc:
+                log.error('Search controller temporarily unavailable (%s)', type(exc).__name__)
             job = queue.claim()
             if job:
                 log.info('Claimed job %s attempt %s', job['id'], job['attempts'])

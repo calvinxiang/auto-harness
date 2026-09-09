@@ -94,6 +94,21 @@ If changing models, submit a new job: existing jobs retain their execution setti
 Stop with `docker compose -f compose.service.yaml down`; named volumes preserve
 database state, artifacts and image caches.
 
+## Automatically optimize a complete harness
+
+```sh
+python test_client.py --optimize --max-rounds 2 --patience 2
+```
+
+This runs the full ten-task development subset, proposes independent multi-file
+package changes, evaluates them against a fresh incumbent, selects a strict
+improvement without task regressions, and repeats. It preserves every round and
+failure in PostgreSQL and resumes from its saved client state. Optional held-out
+checks run only after selection stops. Choose up to three mutation dimensions
+from tools, context, skills and control flow. Model and resource settings remain
+fixed within the run. See [the automatic workflow](docs/AUTOMATIC_OPTIMIZATION.md)
+for smaller diagnostic runs, stopping rules, cancellation and complete history.
+
 ## Compare tools, context and skills
 
 ```sh
@@ -311,9 +326,12 @@ docker compose -f compose.service.yaml run --rm --no-deps -e DATABASE_URL=postgr
 ```
 
 If you changed `POSTGRES_PASSWORD`, use that password in the test URL. Tests truncate
-only this database. **58 tests pass.** They cover tenant/owner isolation, roles, idempotency, concurrent
+only this database. **67 tests pass.** They cover tenant/owner isolation, roles, idempotency, concurrent
 claims, fencing, recovery, cancellation, history/plateau behavior, regressions,
 malformed results, optimizer validation, and the actual client over live HTTP.
+Automatic package searches additionally test controller rollback/concurrency,
+multi-round selection, regression rejection, held-out separation, cancellation,
+frozen settings and full-history client resume.
 
 Real container integration smoke test without an LLM key:
 

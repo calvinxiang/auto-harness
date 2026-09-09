@@ -113,6 +113,27 @@ def test_controller_transition_rollback_and_concurrent_controllers_do_not_duplic
         assert client.get(base + '/optimization-runs/' + run['id'], headers=headers).json()['phase'] == 'baseline'
 
 
+def test_invalid_controller_state_fails_only_its_run_after_rollback(monkeypatch):
+    with TestClient(app) as client:
+        _, headers, base = setup_org(client)
+        _, other, elsewhere = setup_org(client, 'other')
+        first = create(client, headers, base)
+        second = create(client, other, elsewhere)
+        advance = searches.advance
+        def faulty(conn, row):
+            advance(conn, row)
+            if str(row['id']) == first['id']:
+                raise ValueError('Private diagnostic must not enter the public error')
+        monkeypatch.setattr(searches, 'advance', faulty)
+        searches.advance_one()
+        failed = client.get(base + '/optimization-runs/' + first['id'], headers=headers).json()
+        assert failed['status'] == 'failed' and failed['stop_reason'] == 'controller_error'
+        assert not failed['experiments'] and 'Private diagnostic' not in json.dumps(failed)
+        searches.advance_one()
+        healthy = client.get(elsewhere + '/optimization-runs/' + second['id'], headers=other).json()
+        assert healthy['status'] == 'running' and len(healthy['experiments']) == 1
+
+
 def test_invalid_proposals_are_kept_and_stop_at_patience(monkeypatch):
     seen = []
     install_optimizer(monkeypatch, seen, invalid=True)

@@ -10,6 +10,7 @@ from typing import Literal
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException
+import psycopg
 from psycopg.types.json import Jsonb
 from pydantic import Field, model_validator
 
@@ -277,11 +278,28 @@ def advance(conn, run):
 
 
 def advance_one():
-    with connect() as conn:
-        run = conn.execute("SELECT * FROM optimization_runs WHERE status='running' ORDER BY updated_at,id FOR UPDATE SKIP LOCKED LIMIT 1").fetchone()
-        if run:
-            advance(conn, run)
-            conn.execute('UPDATE optimization_runs SET updated_at=now() WHERE id=%s', (run['id'],))
+    run = None
+    try:
+        with connect() as conn:
+            run = conn.execute("SELECT * FROM optimization_runs WHERE status='running' ORDER BY updated_at,id FOR UPDATE SKIP LOCKED LIMIT 1").fetchone()
+            if run:
+                advance(conn, run)
+                conn.execute('UPDATE optimization_runs SET updated_at=now() WHERE id=%s', (run['id'],))
+    except psycopg.Error:
+        # Connection/transaction failures roll back the transition and can retry.
+        raise
+    except Exception as exc:
+        if run is None:
+            raise
+        # An invalid controller state must not poison the queue for every tenant.
+        # Re-read after rollback: the previous local row may contain uncommitted IDs.
+        with connect() as conn:
+            current = conn.execute('SELECT * FROM optimization_runs WHERE id=%s FOR UPDATE', (run['id'],)).fetchone()
+            if current and current['status'] == 'running':
+                cancel(conn, current)
+                _finish(conn, current, 'controller_error', 'failed')
+                conn.execute('UPDATE optimization_runs SET error=%s WHERE id=%s',
+                    (Jsonb({'code': type(exc).__name__, 'message': 'Controller transition failed; prior history retained'}), current['id']))
 
 
 def report(conn, run):

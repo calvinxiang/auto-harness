@@ -4,6 +4,44 @@ Current snapshot: 2026-09-08. Implementation, live package comparison and final
 local deployment are complete. This file supersedes the earlier chronological
 notes, preserved locally in workspace/handoff-history-before-package-completion.md.
 
+## Two-chat coordination
+
+Active work after the user's correction: do not run a Terra comparison; that was
+only an interviewer question. No Terra benchmark was submitted. Automatic
+multi-round package optimization is implemented and deployed at local checkpoint
+`46e7d4c`: `service/searches.py`, `service/search_api.py`, migration 005, and
+`test_client.py --optimize` / `optimization_client.py`. All 66 tests pass, including
+real HTTP client/resume and two-round selection with rejection of regressions.
+Read `docs/AUTOMATIC_OPTIMIZATION.md`. The architecture chat should include this
+implemented layer before finalizing; older statements about no package search
+describe the earlier `ce5bd08` checkpoint. Standalone experiments still do not
+select a winner; optimization runs select their internal next parent automatically.
+
+LIVE RUN: caab9717-1377-4def-afeb-0a23bdc357f0, organization
+b10dc6fe-59b0-4b6b-885a-18e2c6444287. Started about 20:10 Toronto. Client session
+59328. Resume state `workspace/automatic-package-state.json`, final output
+`workspace/automatic-package-results.json`. Do not recreate workers during this
+run. Development tasks configure-git-webserver/extract-elf, one repetition;
+dimensions context/skills/control, max_rounds=2, patience=2; final held-out task
+large-scale-text-editing. At most six proposals and 24 trials, including the
+explicit final development confirmation before held-out evaluation. Astra
+Responses xhigh/32768, GPT-5.4 medium optimizer; no model changes. Runtime and
+initial package are the same frozen version used in the earlier experiment.
+No live outcome is claimed yet. Remaining: inspect automatic decisions/results,
+export a sanitized full report, integrate docs/PR and verify final CI.
+Post-checkpoint hardening isolates a malformed controller state to its own run,
+cancels its unfinished children and lets ordinary work continue. 67 tests pass;
+new images are built but must be deployed only after the live run finishes.
+
+The user has about two hours left and wants a separate chat to document the
+architecture while this original chat owns agent work and benchmark scheduling.
+Read `docs/ARCHITECTURE_HANDOFF.md` for the architecture brief and source map.
+That chat owns `docs/ARCHITECTURE.md` and `docs/architecture/` assets; this chat
+integrates shared README/PR edits and manages the running deployment. Avoid branch
+switches and broad Git staging in the shared checkout. At this handoff, all prior
+benchmarks have finished and no jobs are queued/running. Published checkpoint
+`ce5bd08` is on PR #32 and its GitHub CI passed.
+
 ## Objective and user direction
 
 Complete the take-home HTTP service, durable async jobs, sandboxed TerminalBench
